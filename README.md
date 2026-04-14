@@ -1,6 +1,6 @@
 # gospel
 
-A C++ program that displays various gospel presentation tracts, biblical frameworks for sharing the Gospel of Jesus Christ. The program presents different gospel presentations with biblical explanations and references.
+A C++ program that displays various gospel presentation tracts, biblical frameworks for sharing the Gospel of Jesus Christ. The program presents different gospel presentations with biblical explanations and references. The `--ref` option outputs Bible references directly without a tract.
 
 ## Features
 
@@ -11,11 +11,17 @@ A C++ program that displays various gospel presentation tracts, biblical framewo
 - Support for multiple Bible translations:
   - **KJV** (King James Version) - default
   - **BSB** (Berean Standard Bible)
-- Look up individual Bible verses, verse ranges, or entire chapters directly with `--ref`
+  - **WEB** (World English Bible)
+- Look up individual Bible verses, verse ranges, verse-to-end-of-chapter, or entire chapters directly with `--ref`
 - Multiple references supported using comma separation
 - Optional verse numbers prefixed to each verse with `--versenumbers` / `-vn`
 - Configurable citation style (attribution on new line or inline)
+- Italics for verse output opt-in with `--italic` (tract inline refs stay italic by default)
+- Save output to a file with `--output=`, including PDF via pandoc
+- PDF font control: custom font (`--pdffont=`), size as percentage (`--pdffontsize=`), and margin (`--pdfmargin=`)
+- Print PDF directly to printer with `--print`
 - Command-line configurable tract name and Bible version
+- Invalid command line options are reported with an error
 - Auto-prompts to download the Bible translation file if not found
 
 ## Building
@@ -46,6 +52,7 @@ Run with default KJV translation and default tract:
 Specify a different Bible version:
 ```bash
 ./gospel -bv=BSB
+./gospel -bv=WEB
 ./gospel --bibleversion=BSB
 ```
 
@@ -58,7 +65,7 @@ Specify a different tract presentation:
 Combine tract and Bible version options:
 ```bash
 ./gospel -tn="The Romans Road" -bv=BSB
-./gospel --tractname="The Romans Road" --bibleversion=BSB
+./gospel --tractname="The Romans Road" --bibleversion=WEB
 ```
 
 Output as Markdown:
@@ -78,10 +85,16 @@ Look up multiple references using a comma to separate each:
 ./gospel --ref="Romans 3:23,Romans 6:23,Romans 10:9-10"
 ```
 
+Look up from a verse to the end of the chapter (omit the ending number after the dash):
+```bash
+./gospel --ref="Romans 8:20-"
+./gospel --ref="John 3:16-" -bv=BSB
+```
+
 Look up an entire chapter:
 ```bash
 ./gospel --ref="Romans 8"
-./gospel --ref="John 3" -bv=BSB
+./gospel --ref="John 3" -bv=WEB
 ```
 
 Show verse numbers prefixed to each verse:
@@ -110,6 +123,81 @@ Style 2 output example:
 For God so loved the world... - John 3:16 (KJV)
 ```
 
+Italicize verse output in `--ref` mode (off by default):
+```bash
+./gospel --ref="John 3:16" --italic
+```
+
+Save output to a file:
+```bash
+./gospel --output=romansroad.txt
+./gospel --outputtype=md --output=romansroad.md
+```
+
+Save output as PDF (requires pandoc):
+```bash
+./gospel --output=romansroad.pdf
+./gospel --ref="John 3:16,Romans 5:8" --output=verses.pdf
+```
+
+Print the PDF directly after generating:
+```bash
+./gospel --output=verse.pdf --print
+./gospel --ref="John 3:16" --output=verse.pdf --print
+```
+
+To set or fix the default printer:
+```bash
+lpoptions -d YourPrinterName   # set default printer
+lpstat -p                      # list available printers
+rm ~/.cups/lpoptions           # clear stale printer config if lpr errors occur
+```
+
+Control the PDF margin (default is `0.5in`):
+```bash
+./gospel --output=romansroad.pdf --pdfmargin=0.75in
+./gospel --output=romansroad.pdf --pdfmargin=2cm
+```
+
+Set a custom PDF font size as a percentage of the default (11pt base):
+```bash
+./gospel --output=romansroad.pdf --pdffontsize=120    # 120% → 13pt
+./gospel --output=romansroad.pdf --pdffontsize=150    # 150% → 17pt
+```
+
+Set a custom PDF font (default is `Palatino` on macOS, requires xelatex):
+```bash
+./gospel --output=romansroad.pdf --pdffont="Georgia"
+./gospel --output=romansroad.pdf --pdffont="Times New Roman"
+```
+
+> **Linux note:** Palatino is not installed by default on Linux. The closest available equivalent included with texlive is `TeX Gyre Pagella`:
+> ```bash
+> ./gospel --output=romansroad.pdf --pdffont="TeX Gyre Pagella"
+> ```
+
+Install xelatex if needed:
+```bash
+sudo tlmgr install xetex
+```
+
+If pandoc or a LaTeX engine is not installed the program will tell you how to install them and show the manual alternative:
+```bash
+./gospel --outputtype=md | pandoc -f markdown -o output.pdf
+```
+
+Install pandoc and a LaTeX engine:
+```bash
+# macOS
+brew install pandoc && brew install --cask basictex
+sudo tlmgr update --self
+
+# Linux
+apt install pandoc texlive
+```
+
+> **macOS note:** After installing basictex, open a new Terminal window before running gospel. The `pdflatex` command is added to your PATH at login and will not be found in an existing Terminal session.
+
 ## Copying Output
 
 The program output can be easily copied to the clipboard using piping:
@@ -132,6 +220,7 @@ This is useful for sharing gospel presentations or copying the content for use i
 
 - **KJV**: King James Version — `BibleKJV.txt` (downloaded from https://openbible.com/textfiles/kjv.txt)
 - **BSB**: Berean Standard Bible — `BibleBSB.txt` (downloaded from https://bereanbible.com/bsb.txt)
+- **WEB**: World English Bible — `BibleWEB.txt` (downloaded from https://openbible.com/textfiles/web.txt)
 
 If a Bible translation file is not found, the program will prompt you to download it automatically using `curl`.
 
@@ -140,9 +229,12 @@ If a Bible translation file is not found, the program will prompt you to downloa
 - `gospel.cpp` - Main program source code
 - `BibleKJV.txt` - KJV Bible text (downloaded on first use)
 - `BibleBSB.txt` - BSB Bible text (downloaded on first use)
+- `BibleWEB.txt` - WEB Bible text (downloaded on first use)
 
 ## Requirements
 
 - C++11 or later
 - Standard C++ library
 - `curl` (for automatic Bible file download)
+- `pandoc` + `basictex` (for PDF output)
+- `xelatex` / `xetex` (for custom PDF fonts via `--pdffont=`)

@@ -33,6 +33,7 @@
 #include <regex>
 #include <fstream>
 #include <sstream>
+#include <cstdio>
 
 using namespace std;
 
@@ -186,15 +187,15 @@ string lookupVerses(const string& reference, bool verseNumbers = false) {
     return "";
 }
 
-string formatCitation(const string& verseText, const string& reference, const string& version, bool markdown, int refStyle) {
+string formatCitation(const string& verseText, const string& reference, const string& version, bool markdown, int refStyle, bool italic = false) {
     string citation = reference + " (" + version + ")";
     string formatted;
     if (refStyle == 2) {
         formatted = verseText + " - " + citation;
     } else {
-        formatted = verseText + "\n\u2014 " + citation;
+        formatted = verseText + "  \n\u2014 " + citation;
     }
-    if (markdown) {
+    if (markdown && italic) {
         formatted = "*" + formatted + "*";
     }
     return formatted;
@@ -213,7 +214,7 @@ string processMarkdownReferences(const string& text, const string& version, bool
 
         string verseText = lookupVerses(reference, verseNumbers);
         if (!verseText.empty()) {
-            string replacement = formatCitation(verseText, reference, version, markdown, refStyle);
+            string replacement = formatCitation(verseText, reference, version, markdown, refStyle, true);
 
             // Replace the [Reference] with the verse text and formatted reference
             size_t pos = result.find("[" + reference + "]", offset);
@@ -236,7 +237,7 @@ void printHelp() {
     cout << "  -h, --help              Show this help message and exit" << endl;
     cout << "  -v, --version           Show version information and exit" << endl;
     cout << "  -bv=VERSION             Set Bible version (default: KJV)" << endl;
-    cout << "  --bibleversion=VERSION  Specify Bible version (KJV, BSB)" << endl;
+    cout << "  --bibleversion=VERSION  Specify Bible version (KJV, BSB, WEB)" << endl;
     cout << "  --outputtype=TYPE       Set output type (plaintext, md)" << endl;
     cout << "  -tn=NAME                Set tract name (default: 'The Romans Road')" << endl;
     cout << "  --tractname=NAME        Specify tract presentation by name" << endl;
@@ -244,6 +245,12 @@ void printHelp() {
     cout << "                           REF formats: Book Ch:V  Book Ch:V-V  Book Ch:V-  Book Ch" << endl;
     cout << "  --refstyle=STYLE         Citation style: 1=new line (default), 2=inline" << endl;
     cout << "  --versenumbers, -vn      Prefix each verse with its verse number, e.g. [1]" << endl;
+    cout << "  --output=FILE            Write output to FILE (.pdf requires pandoc)" << endl;
+    cout << "  --pdfmargin=MARGIN       PDF margin size (default: 0.5in, e.g. 0.75in, 2cm)" << endl;
+    cout << "  --pdffont=FONT           PDF font name (default: Palatino, requires xelatex)" << endl;
+    cout << "  --pdffontsize=PCT        PDF font size as a percentage (default: 100, e.g. 120 = 120%)" << endl;
+    cout << "  --italic                 Italicize verse output (default: off for --ref, on for tracts)" << endl;
+    cout << "  --print                  Send PDF to printer after generating (requires --output=.pdf)" << endl;
     cout << "\nExamples:" << endl;
     cout << "  gospel --outputtype=md                            Display tract output as markdown" << endl;
     cout << "  gospel                                            Display default tract in KJV" << endl;
@@ -253,14 +260,26 @@ void printHelp() {
     cout << "  gospel --ref=\"John 3:16,Romans 8:9-10\"           Display multiple verses" << endl;
     cout << "  gospel --ref=\"Romans 8:20-\"                       Display verse 20 to end of chapter" << endl;
     cout << "  gospel --ref=\"Romans 8\" -vn                       Display a full chapter with verse numbers" << endl;
+    cout << "  gospel --output=tract.pdf                         Save tract as PDF (requires pandoc)" << endl;
+    cout << "  gospel --ref=\"John 3:16\" --output=verse.pdf       Save verse as PDF (requires pandoc)" << endl;
 }
 int main(int argc, char* argv[]) {
     string version = "KJV";
     string tractName = "The Romans Road"; // Default tract
     string outputType = "plaintext";
     string refArg;
+    string outputFile;
+    string pdfMargin = "0.5in";
+#ifdef __APPLE__
+    string pdfFont = "Palatino";
+#else
+    string pdfFont;
+#endif
+    int pdfFontSizePct = 100;
     int refStyle = 1;
     bool verseNumbers = false;
+    bool italic = false;
+    bool printPdf = false;
 
     // Parse command-line arguments
     for(int i = 1; i < argc; ++i) {
@@ -308,6 +327,34 @@ int main(int argc, char* argv[]) {
             }
         } else if (arg == "--versenumbers" || arg == "-vn") {
             verseNumbers = true;
+        } else if (arg.find("--output=") == 0) {
+            size_t eq = arg.find('=');
+            if (eq != string::npos) {
+                outputFile = arg.substr(eq + 1);
+            }
+        } else if (arg.find("--pdfmargin=") == 0 || arg.find("-pdfmargin=") == 0) {
+            size_t eq = arg.find('=');
+            if (eq != string::npos) {
+                pdfMargin = arg.substr(eq + 1);
+            }
+        } else if (arg.find("--pdffont=") == 0 || arg.find("-pdffont=") == 0) {
+            size_t eq = arg.find('=');
+            if (eq != string::npos) {
+                pdfFont = arg.substr(eq + 1);
+            }
+        } else if (arg.find("--pdffontsize=") == 0 || arg.find("-pdffontsize=") == 0) {
+            size_t eq = arg.find('=');
+            if (eq != string::npos) {
+                pdfFontSizePct = stoi(arg.substr(eq + 1));
+            }
+        } else if (arg == "--italic") {
+            italic = true;
+        } else if (arg == "--print") {
+            printPdf = true;
+        } else if (arg.find("-") == 0) {
+            cerr << "Error: unknown option '" << arg << "'" << endl;
+            cerr << "Run 'gospel --help' for usage." << endl;
+            return 1;
         }
     }
     
@@ -323,9 +370,12 @@ int main(int argc, char* argv[]) {
     } else if (version == "BSB") {
         bibleFile = "BibleBSB.txt";
         bibleUrl  = "https://bereanbible.com/bsb.txt";
+    } else if (version == "WEB") {
+        bibleFile = "BibleWEB.txt";
+        bibleUrl  = "https://openbible.com/textfiles/web.txt";
     } else {
         cerr << "Error: unsupported Bible version '" << version << "'." << endl;
-        cerr << "Supported versions: KJV, BSB" << endl;
+        cerr << "Supported versions: KJV, BSB, WEB" << endl;
         return 1;
     }
 
@@ -355,14 +405,16 @@ int main(int argc, char* argv[]) {
 
     bibleVerses = loadBible(bibleFile);
 
-    bool markdown = false;
-    if (outputType == "md" || outputType == "MD") {
-        markdown = true;
-    }
+    // PDF output always requires markdown as the intermediate format
+    bool isPdf = outputFile.size() >= 4 &&
+                 outputFile.substr(outputFile.size() - 4) == ".pdf";
+    bool markdown = isPdf || (outputType == "md" || outputType == "MD");
+
+    // Capture all output into a string so we can route it to stdout or a file
+    ostringstream out;
 
     // --ref mode: output only the requested Bible references
     if (!refArg.empty()) {
-        // Split by comma, strip optional surrounding []
         stringstream ss(refArg);
         string token;
         while (getline(ss, token, ',')) {
@@ -377,39 +429,140 @@ int main(int argc, char* argv[]) {
 
             string verseText = lookupVerses(token, verseNumbers);
             if (!verseText.empty()) {
-                cout << formatCitation(verseText, token, version, markdown, refStyle) << endl << endl;
+                out << formatCitation(verseText, token, version, markdown, refStyle, italic) << endl << endl;
             } else {
                 cerr << "Reference not found: " << token << endl;
             }
         }
-        return 0;
-    }
-
-    // Check if tract exists
-    if (availableTracts.find(tractName) == availableTracts.end()) {
-        cerr << "Error: Tract '" << tractName << "' not found." << endl;
-        cerr << "Available tracts:" << endl;
-        for (const auto& tract : availableTracts) {
-            cerr << "  - " << tract.first << endl;
+    } else {
+        // Check if tract exists
+        if (availableTracts.find(tractName) == availableTracts.end()) {
+            cerr << "Error: Tract '" << tractName << "' not found." << endl;
+            cerr << "Available tracts:" << endl;
+            for (const auto& tract : availableTracts) {
+                cerr << "  - " << tract.first << endl;
+            }
+            return 1;
         }
-        return 1;
-    }
 
-    // Get the selected tract
-    const Tract& selectedTract = availableTracts[tractName];
+        const Tract& selectedTract = availableTracts[tractName];
 
-    for (const auto& v : selectedTract.sections) {
-        if (v.section_title.length() > 0) {
-            if (markdown) {
-                cout << "## " << v.section_title << endl;
-            } else {
-                cout << v.section_title << endl;
+        for (const auto& v : selectedTract.sections) {
+            if (v.section_title.length() > 0) {
+                if (markdown) {
+                    out << "\n## " << v.section_title << "\n" << endl;
+                } else {
+                    out << v.section_title << endl;
+                }
+            }
+            if (v.text.length() > 0) {
+                string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers);
+                out << processedText << "\n" << endl;
             }
         }
-        if (v.text.length() > 0) {
-            string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers);
-            cout << processedText << endl;
-        }
     }
+
+    // Route output
+    if (outputFile.empty()) {
+        cout << out.str();
+    } else if (isPdf) {
+        // Write markdown to a temp file then convert via pandoc
+        string tmpFile = outputFile + ".tmp.md";
+        ofstream tmp(tmpFile);
+        if (!tmp) {
+            cerr << "Error: could not create temporary file '" << tmpFile << "'." << endl;
+            return 1;
+        }
+        tmp << out.str();
+        tmp.close();
+
+        // Build pandoc command
+        string cmd = "pandoc -f markdown -V geometry:margin=" + pdfMargin;
+        string headerFile = outputFile + ".tmp.tex";
+
+        // Use xelatex + fontspec Scale to handle font and font size together.
+        // Scale= is relative to the document base (11pt), so 150% = Scale=1.5.
+        // This is more reliable than \fontsize with xelatex since fontspec
+        // controls font rendering and overrides \fontsize in AtBeginDocument.
+        double scale = pdfFontSizePct / 100.0;
+        if (!pdfFont.empty()) {
+            // Use xelatex and set the font + scale together in a header file.
+            // We do NOT pass -V mainfont= to pandoc because the template calls
+            // \setmainfont before -H header includes, which would ignore Scale.
+            // Instead we load fontspec and call \setmainfont[Scale=X]{Font} ourselves.
+            cmd += " --pdf-engine=xelatex";
+            ofstream hdr(headerFile);
+            if (!hdr) {
+                cerr << "Error: could not create header file '" << headerFile << "'." << endl;
+                remove(tmpFile.c_str());
+                return 1;
+            }
+            hdr << "\\usepackage{fontspec}\n";
+            hdr << "\\setmainfont[Scale=" << scale << "]{" << pdfFont << "}\n";
+            hdr.close();
+            cmd += " -H \"" + headerFile + "\"";
+        }
+        cmd += " \"" + tmpFile + "\" -o \"" + outputFile + "\"";
+        int ret = system(cmd.c_str());
+        remove(tmpFile.c_str());
+        remove(headerFile.c_str());
+
+        if (ret != 0) {
+            cerr << "Error: PDF conversion failed." << endl;
+            cerr << endl;
+            cerr << "PDF generation requires pandoc and a LaTeX engine." << endl;
+            cerr << "Install both with:" << endl;
+            cerr << "  macOS:  brew install pandoc && brew install --cask basictex" << endl;
+            cerr << "  Linux:  apt install pandoc texlive" << endl;
+            cerr << endl;
+            cerr << "After installing basictex, run: sudo tlmgr update --self" << endl;
+            cerr << "Then open a new Terminal window — pdflatex is not found in existing sessions." << endl;
+            cerr << "Or generate markdown and convert manually:" << endl;
+            cerr << "  gospel --outputtype=md | pandoc -f markdown -o " << outputFile << endl;
+            return 1;
+        }
+        cerr << "Saved to " << outputFile << endl;
+        if (printPdf) {
+            // Find the first available printer to avoid stale ~/.cups/lpoptions issues
+            FILE* pipe = popen("lpstat -p 2>/dev/null | awk '/^printer/ {print $2; exit}'", "r");
+            string printer;
+            if (pipe) {
+                char buf[256];
+                if (fgets(buf, sizeof(buf), pipe)) {
+                    printer = buf;
+                    // trim trailing newline
+                    if (!printer.empty() && printer.back() == '\n')
+                        printer.pop_back();
+                }
+                pclose(pipe);
+            }
+            string printCmd;
+            if (!printer.empty()) {
+                printCmd = "lpr -P \"" + printer + "\" \"" + outputFile + "\"";
+            } else {
+                printCmd = "lpr \"" + outputFile + "\"";
+            }
+            int printRet = system(printCmd.c_str());
+            if (printRet != 0) {
+                cerr << "Warning: print command failed." << endl;
+                cerr << "If you see a lpoptions error, fix it with: rm ~/.cups/lpoptions" << endl;
+                cerr << "To list available printers: lpstat -p" << endl;
+            } else {
+                if (!printer.empty())
+                    cerr << "Sent to printer: " << printer << endl;
+                else
+                    cerr << "Sent to printer." << endl;
+            }
+        }
+    } else {
+        ofstream f(outputFile);
+        if (!f) {
+            cerr << "Error: could not write to '" << outputFile << "'." << endl;
+            return 1;
+        }
+        f << out.str();
+        cerr << "Saved to " << outputFile << endl;
+    }
+
     return 0;
 }
