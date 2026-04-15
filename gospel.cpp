@@ -114,7 +114,7 @@ map<string, string> bibleVerses;
 
 // Look up one or more verses for a reference like "Romans 8:9" or "Romans 8:9-10"
 // Returns the verse text, or empty string on failure. Writes errors to stderr.
-string lookupVerses(const string& reference, bool verseNumbers = false) {
+string lookupVerses(const string& reference, bool verseNumbers = false, bool verseNewline = false) {
     // Check for a verse range (e.g. "Romans 8:9-10" or "Romans 8:20-")
     size_t colon = reference.rfind(':');
     if (colon != string::npos) {
@@ -148,7 +148,7 @@ string lookupVerses(const string& reference, bool verseNumbers = false) {
                 string key = bookChapter + to_string(v);
                 auto it = bibleVerses.find(key);
                 if (it != bibleVerses.end()) {
-                    if (!combined.empty()) combined += " ";
+                    if (!combined.empty()) combined += verseNewline ? "\n" : " ";
                     if (verseNumbers) combined += "[" + to_string(v) + "] ";
                     combined += it->second;
                 } else {
@@ -180,7 +180,7 @@ string lookupVerses(const string& reference, bool verseNumbers = false) {
         }
         string combined;
         for (const auto& v : chapterVerses) {
-            if (!combined.empty()) combined += " ";
+            if (!combined.empty()) combined += verseNewline ? "\n" : " ";
             if (verseNumbers) combined += "[" + to_string(v.first) + "] ";
             combined += v.second;
         }
@@ -270,7 +270,7 @@ string convertSpansToPdfColor(const string& text) {
 }
 
 // Process markdown text with embedded bible references
-string processMarkdownReferences(const string& text, const string& version, bool markdown, int refStyle, bool verseNumbers, bool verseQuotes = false, bool isPdf = false) {
+string processMarkdownReferences(const string& text, const string& version, bool markdown, int refStyle, bool verseNumbers, bool verseQuotes = false, bool isPdf = false, bool verseNewline = false) {
     string result = isPdf ? convertSpansToPdfColor(text) : text;
     regex refPattern("\\[([^\\]]+)\\]");
     smatch match;
@@ -280,7 +280,7 @@ string processMarkdownReferences(const string& text, const string& version, bool
     while (regex_search(searchStart, text.cend(), match, refPattern)) {
         string reference = match[1].str();
 
-        string verseText = lookupVerses(reference, verseNumbers);
+        string verseText = lookupVerses(reference, verseNumbers, verseNewline);
         if (!verseText.empty()) {
             string replacement = formatCitation(verseText, reference, version, markdown, refStyle, true, verseQuotes);
 
@@ -313,12 +313,14 @@ void printHelp() {
     cout << "                           REF formats: Book Ch:V  Book Ch:V-V  Book Ch:V-  Book Ch" << endl;
     cout << "  --refstyle=STYLE         Citation style: 1=new line (default), 2=inline, 3=parentheses, 4=parentheses with version" << endl;
     cout << "  --versenumbers, -vn      Prefix each verse with its verse number, e.g. [1]" << endl;
+    cout << "  --versenewline, -vnl     Start each verse on a new line" << endl;
     cout << "  --output=FILE            Write output to FILE (.pdf requires pandoc)" << endl;
     cout << "  --pdfmargin=MARGIN       PDF margin size (default: 0.5in, e.g. 0.75in, 2cm)" << endl;
     cout << "  --pdffont=FONT           PDF font name (default: Palatino, requires xelatex)" << endl;
     cout << "  --pdffontsize=PCT        PDF font size as a percentage (default: 100, e.g. 120 = 120%)" << endl;
     cout << "  --italic                 Italicize verse output (default: off for --ref, on for tracts)" << endl;
     cout << "  --versequotes            Wrap each Bible verse in curly quotes" << endl;
+    cout << "  --chapterheader, -ch     Print book and chapter as a header when outputting a full chapter" << endl;
     cout << "  --print                  Send PDF to printer after generating (requires --output=.pdf)" << endl;
     cout << "\nExamples:" << endl;
     cout << "  gospel --outputtype=md                            Display tract output as markdown" << endl;
@@ -347,9 +349,11 @@ int main(int argc, char* argv[]) {
     int pdfFontSizePct = 100;
     int refStyle = 1;
     bool verseNumbers = false;
+    bool verseNewline = false;
     bool italic = false;
     bool printPdf = false;
     bool verseQuotes = false;
+    bool chapterHeader = false;
 
     // Parse command-line arguments
     for(int i = 1; i < argc; ++i) {
@@ -397,6 +401,8 @@ int main(int argc, char* argv[]) {
             }
         } else if (arg == "--versenumbers" || arg == "-vn") {
             verseNumbers = true;
+        } else if (arg == "--versenewline" || arg == "-vnl") {
+            verseNewline = true;
         } else if (arg.find("--output=") == 0) {
             size_t eq = arg.find('=');
             if (eq != string::npos) {
@@ -421,6 +427,8 @@ int main(int argc, char* argv[]) {
             italic = true;
         } else if (arg == "--versequotes") {
             verseQuotes = true;
+        } else if (arg == "--chapterheader" || arg == "-ch") {
+            chapterHeader = true;
         } else if (arg == "--print") {
             printPdf = true;
         } else if (arg.find("-") == 0) {
@@ -489,6 +497,7 @@ int main(int argc, char* argv[]) {
     if (!refArg.empty()) {
         stringstream ss(refArg);
         string token;
+        string lastBook; // track last book name for shorthand like "Psalm 7, 27"
         while (getline(ss, token, ',')) {
             // Trim optional [] wrappers
             if (!token.empty() && token.front() == '[') token.erase(0, 1);
@@ -499,8 +508,30 @@ int main(int argc, char* argv[]) {
             if (start == string::npos) continue;
             token = token.substr(start, end - start + 1);
 
-            string verseText = lookupVerses(token, verseNumbers);
+            // If token starts with a digit, prepend the last book name
+            // e.g. "Psalm 7, 27" → token "27" becomes "Psalm 27"
+            if (!token.empty() && isdigit((unsigned char)token[0]) && !lastBook.empty()) {
+                token = lastBook + " " + token;
+            } else {
+                // Extract book name: everything up to the last space before the chapter/verse number
+                size_t bookEnd = string::npos;
+                for (size_t i = 0; i < token.size(); ++i) {
+                    if (isdigit((unsigned char)token[i])) {
+                        // walk back past any spaces to find end of book name
+                        size_t j = i;
+                        while (j > 0 && token[j-1] == ' ') --j;
+                        if (j > 0) bookEnd = j;
+                        break;
+                    }
+                }
+                if (bookEnd != string::npos)
+                    lastBook = token.substr(0, bookEnd);
+            }
+
+            string verseText = lookupVerses(token, verseNumbers, verseNewline);
             if (!verseText.empty()) {
+                if (chapterHeader && token.find(':') == string::npos)
+                    out << (markdown ? "## " : "") << token << "\n\n";
                 out << formatCitation(verseText, token, version, markdown, refStyle, italic, verseQuotes) << endl << endl;
             } else {
                 cerr << "Reference not found: " << token << endl;
@@ -533,7 +564,7 @@ int main(int argc, char* argv[]) {
                     out << v.section_title;
                 }
                 if (v.text.length() > 0) {
-                    string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf);
+                    string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf, verseNewline);
                     if (markdown) {
                         string hardBreak;
                         for (size_t i = 0; i < processedText.size(); ++i) {
@@ -550,7 +581,7 @@ int main(int argc, char* argv[]) {
                     out << "\n" << endl;
                 }
             } else if (v.text.length() > 0) {
-                string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf);
+                string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf, verseNewline);
                 out << processedText << "\n" << endl;
             }
         }

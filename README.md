@@ -5,7 +5,7 @@ A C++ program that displays various gospel presentation tracts, biblical framewo
 ## Features
 
 - Support for multiple gospel presentation tracts/styles
-- Currently includes "The Romans Road" (default)
+- Currently includes "The Romans Road" (default) and "Somebody Loves You"
 - Easy to add new tracts by extending the code
 - Display tract content with biblical explanations
 - Support for multiple Bible translations:
@@ -15,8 +15,12 @@ A C++ program that displays various gospel presentation tracts, biblical framewo
 - Look up individual Bible verses, verse ranges, verse-to-end-of-chapter, or entire chapters directly with `--ref`
 - Multiple references supported using comma separation
 - Optional verse numbers prefixed to each verse with `--versenumbers` / `-vn`
-- Configurable citation style (attribution on new line or inline)
+- Each verse on its own line with `--versenewline` / `-vnl`
+- Optional book and chapter header when outputting a full chapter with `--chapterheader` / `-ch`
+- Configurable citation style: new line, inline, or parentheses (`--refstyle=1–4`)
+- Optional curly quotes around verse text with `--versequotes`
 - Italics for verse output opt-in with `--italic` (tract inline refs stay italic by default)
+- Shorthand multi-reference: `"Psalm 7, 27"` is the same as `"Psalm 7, Psalm 27"`
 - Save output to a file with `--output=`, including PDF via pandoc
 - PDF font control: custom font (`--pdffont=`), size as percentage (`--pdffontsize=`), and margin (`--pdfmargin=`)
 - Print PDF directly to printer with `--print`
@@ -97,10 +101,33 @@ Look up an entire chapter:
 ./gospel --ref="John 3" -bv=WEB
 ```
 
+Look up multiple references using shorthand (book name carries forward):
+```bash
+./gospel --ref="Psalm 7, 27"          # same as "Psalm 7, Psalm 27"
+./gospel --ref="1 John 4:9, 19, 5:1"  # same as "1 John 4:9, 1 John 19, 1 John 5:1"
+```
+
 Show verse numbers prefixed to each verse:
 ```bash
 ./gospel --ref="Romans 8" --versenumbers
 ./gospel --ref="John 3:16,Romans 5:8" -vn
+```
+
+Start each verse on its own line:
+```bash
+./gospel --ref="Romans 8" --versenewline
+./gospel --ref="Romans 8" -vn -vnl
+```
+
+Print the book and chapter as a header when outputting a full chapter:
+```bash
+./gospel --ref="Romans 8" --chapterheader
+./gospel --ref="Romans 8" -ch -vn -vnl
+```
+
+Wrap verse text in curly quotes:
+```bash
+./gospel --ref="John 3:16" --versequotes
 ```
 
 Change the citation style (default is style 1):
@@ -108,8 +135,14 @@ Change the citation style (default is style 1):
 # Style 1 (default): citation on its own line below the verse
 ./gospel --ref="John 3:16" --refstyle=1
 
-# Style 2: citation inline after the verse text
+# Style 2: citation inline, separated by a dash
 ./gospel --ref="John 3:16" --refstyle=2
+
+# Style 3: reference in parentheses (no version)
+./gospel --ref="John 3:16" --refstyle=3
+
+# Style 4: reference and version in parentheses
+./gospel --ref="John 3:16" --refstyle=4
 ```
 
 Style 1 output example:
@@ -121,6 +154,16 @@ For God so loved the world...
 Style 2 output example:
 ```
 For God so loved the world... - John 3:16 (KJV)
+```
+
+Style 3 output example:
+```
+For God so loved the world... (John 3:16)
+```
+
+Style 4 output example:
+```
+For God so loved the world... (John 3:16 (KJV))
 ```
 
 Italicize verse output in `--ref` mode (off by default):
@@ -164,6 +207,13 @@ Set a custom PDF font size as a percentage of the default (11pt base):
 ./gospel --output=romansroad.pdf --pdffontsize=120    # 120% → 13pt
 ./gospel --output=romansroad.pdf --pdffontsize=150    # 150% → 17pt
 ```
+
+Color specific words or phrases in PDF output using HTML span tags in the tract data:
+```cpp
+"<span style=\"color: red;\">word</span>"        // named color
+"<span style=\"color: #C0392B;\">word</span>"    // hex color
+```
+Colors are converted to LaTeX `\textcolor` automatically when generating a PDF.
 
 Set a custom PDF font (default is `Palatino` on macOS, requires xelatex):
 ```bash
