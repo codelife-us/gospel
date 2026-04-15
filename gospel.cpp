@@ -37,7 +37,7 @@
 
 using namespace std;
 
-const string VERSION = "1.0";
+const string VERSION = "1.1";
 
 struct Section {
     string section_title;
@@ -63,9 +63,21 @@ vector<Section> romansRoadSections = {
     {"","Follow the Romans Road to salvation today. Recognize that you are a sinner and that your sin must be judged by God. See that Jesus died to pay the penalty for your sin, but that you must choose to accept His provision. Understand that you cannot earn your way to Heaven through good works or religious activity. Now turn to God and put your faith in Jesus Christ who died for you and rose again.\n"},
     {"","[Romans 10:9-10]"}
 };
+
+vector<Section> tracts2 = {
+    {"<span style=\"color: red;\">Somebody Loves You</span>", "\nThe creator of all things loves <span style=\"color: #0c9c30;\">YOU</span> so much that He sent His only Son, Jesus, to die for you on the cross. He wants to forgive your sins and make you clean so that you can be with Him for all eternity. Isn’t it amazing to know that you are loved by God?\n\n**HIS LOVE FOR YOU IS:...**"},
+    {"<span style=\"color: red;\">Unending</span>", "— God’s love is eternal. He loved you yesterday, loves you today and will love you forever!\n\n[Jeremiah 31:3]"},
+    {"<span style=\"color: red;\">Unselfish</span>", "— God didn’t wait for us to love Him first. His love was freely given.\n\n[1 John 4:19]\n"},
+    {"<span style=\"color: red;\">Undeserved</span>", "— God is holy, righteous, and just. As sinners, we have done nothing to deserve God’s love. But He loves us anyway.\n\n[Romans 5:8]\n"},
+    {"<span style=\"color: red;\">Unimaginable</span>", "— God’s love led Him to send His son Jesus to bear the punishment for our sins on the cross. Can you imagine watching someone you love being punished to the point of death for something they didn’t do?\n\n[John 3:16]\n"},
+    {"<span style=\"color: red;\">Undying</span>", "— God didn’t only send Jesus to die for our sins. He then raised Him from the dead so we can have eternal life. What a wonderful gift He offers us!\n\n[1 John 4:9]\n"},
+    {"<span style=\"color: red;\">Unmerited</span>", "— God offers you the free gift of salvation through Jesus Christ. Because it is a gift, you cannot earn it. Instead, you must see your need of salvation and accept it by trusting Jesus as your Savior.\n\n[Ephesians 2:8-9]\n\nHow can you receive God’s gift of salvation? The Bible says:\n\n[Romans 10:9]\n\nIt’s that easy! Will you choose to accept God’s love? Then you too can experience God’s unfathomable love for all eternity!\n\n[Romans 8:38-39]\n"}
+};
+
 // Available tracts
 map<string, Tract> availableTracts = {
-    {"The Romans Road", {"The Romans Road", romansRoadSections}}
+    {"The Romans Road", {"The Romans Road", romansRoadSections}},
+    {"Somebody Loves You", {"Somebody Loves You", tracts2}}
 };
 
 // Function to load Bible verses from file
@@ -187,13 +199,18 @@ string lookupVerses(const string& reference, bool verseNumbers = false) {
     return "";
 }
 
-string formatCitation(const string& verseText, const string& reference, const string& version, bool markdown, int refStyle, bool italic = false) {
+string formatCitation(const string& verseText, const string& reference, const string& version, bool markdown, int refStyle, bool italic = false, bool verseQuotes = false) {
     string citation = reference + " (" + version + ")";
+    string quotedText = verseQuotes ? "\u201c" + verseText + "\u201d" : verseText;
     string formatted;
     if (refStyle == 2) {
-        formatted = verseText + " - " + citation;
+        formatted = quotedText + " - " + citation;
+    } else if (refStyle == 3) {
+        formatted = quotedText + " (" + reference + ")";
+    } else if (refStyle == 4) {
+        formatted = quotedText + " (" + citation + ")";
     } else {
-        formatted = verseText + "  \n\u2014 " + citation;
+        formatted = quotedText + "  \n\u2014 " + citation;
     }
     if (markdown && italic) {
         formatted = "*" + formatted + "*";
@@ -201,9 +218,60 @@ string formatCitation(const string& verseText, const string& reference, const st
     return formatted;
 }
 
+// Registry of hex colors -> auto-generated LaTeX color names.
+// Populated during text processing; written as \definecolor into the PDF header.
+map<string, string> pdfColorRegistry;
+int pdfColorCounter = 0;
+
+string registerPdfColor(const string& hex) {
+    auto it = pdfColorRegistry.find(hex);
+    if (it != pdfColorRegistry.end()) return it->second;
+    string name = "gospelcolor" + to_string(pdfColorCounter++);
+    pdfColorRegistry[hex] = name;
+    return name;
+}
+
+// Wrap text in \textcolor{name}{text} for PDF output.
+// Hex colors are registered for \definecolor in the header; named colors used directly.
+string applyPdfColor(const string& text, const string& color) {
+    if (color.empty()) return text;
+    string c = color;
+    if (!c.empty() && c[0] == '#') c = c.substr(1);
+    bool isHex = c.size() == 6 && c.find_first_not_of("0123456789abcdefABCDEF") == string::npos;
+    if (isHex) {
+        transform(c.begin(), c.end(), c.begin(), ::toupper);
+        return "\\textcolor{" + registerPdfColor(c) + "}{" + text + "}";
+    }
+    return "\\textcolor{" + color + "}{" + text + "}";
+}
+
+// Convert <span style="color: #hex;">text</span> to \textcolor[HTML]{HEX}{text} for PDF output.
+// Supports hex colors (#RRGGBB) and named colors (red, blue, etc.).
+string convertSpansToPdfColor(const string& text) {
+    string result;
+    regex spanPattern("<span\\s+style=[\"']color:\\s*([^\"';]+);?\\s*[\"']>(.*?)</span>",
+                      regex::icase);
+    sregex_iterator it(text.cbegin(), text.cend(), spanPattern);
+    sregex_iterator end;
+    size_t lastEnd = 0;
+
+    for (; it != end; ++it) {
+        const smatch& m = *it;
+        result += text.substr(lastEnd, m.position() - lastEnd);
+        string color = m[1].str();
+        size_t s = color.find_first_not_of(" \t");
+        size_t e = color.find_last_not_of(" \t");
+        if (s != string::npos) color = color.substr(s, e - s + 1);
+        result += applyPdfColor(m[2].str(), color);
+        lastEnd = m.position() + m.length();
+    }
+    result += text.substr(lastEnd);
+    return result;
+}
+
 // Process markdown text with embedded bible references
-string processMarkdownReferences(const string& text, const string& version, bool markdown, int refStyle, bool verseNumbers) {
-    string result = text;
+string processMarkdownReferences(const string& text, const string& version, bool markdown, int refStyle, bool verseNumbers, bool verseQuotes = false, bool isPdf = false) {
+    string result = isPdf ? convertSpansToPdfColor(text) : text;
     regex refPattern("\\[([^\\]]+)\\]");
     smatch match;
     string::const_iterator searchStart(text.cbegin());
@@ -214,7 +282,7 @@ string processMarkdownReferences(const string& text, const string& version, bool
 
         string verseText = lookupVerses(reference, verseNumbers);
         if (!verseText.empty()) {
-            string replacement = formatCitation(verseText, reference, version, markdown, refStyle, true);
+            string replacement = formatCitation(verseText, reference, version, markdown, refStyle, true, verseQuotes);
 
             // Replace the [Reference] with the verse text and formatted reference
             size_t pos = result.find("[" + reference + "]", offset);
@@ -243,13 +311,14 @@ void printHelp() {
     cout << "  --tractname=NAME        Specify tract presentation by name" << endl;
     cout << "  --ref=REF                Output a Bible reference directly (use comma to separate multiple)" << endl;
     cout << "                           REF formats: Book Ch:V  Book Ch:V-V  Book Ch:V-  Book Ch" << endl;
-    cout << "  --refstyle=STYLE         Citation style: 1=new line (default), 2=inline" << endl;
+    cout << "  --refstyle=STYLE         Citation style: 1=new line (default), 2=inline, 3=parentheses, 4=parentheses with version" << endl;
     cout << "  --versenumbers, -vn      Prefix each verse with its verse number, e.g. [1]" << endl;
     cout << "  --output=FILE            Write output to FILE (.pdf requires pandoc)" << endl;
     cout << "  --pdfmargin=MARGIN       PDF margin size (default: 0.5in, e.g. 0.75in, 2cm)" << endl;
     cout << "  --pdffont=FONT           PDF font name (default: Palatino, requires xelatex)" << endl;
     cout << "  --pdffontsize=PCT        PDF font size as a percentage (default: 100, e.g. 120 = 120%)" << endl;
     cout << "  --italic                 Italicize verse output (default: off for --ref, on for tracts)" << endl;
+    cout << "  --versequotes            Wrap each Bible verse in curly quotes" << endl;
     cout << "  --print                  Send PDF to printer after generating (requires --output=.pdf)" << endl;
     cout << "\nExamples:" << endl;
     cout << "  gospel --outputtype=md                            Display tract output as markdown" << endl;
@@ -280,6 +349,7 @@ int main(int argc, char* argv[]) {
     bool verseNumbers = false;
     bool italic = false;
     bool printPdf = false;
+    bool verseQuotes = false;
 
     // Parse command-line arguments
     for(int i = 1; i < argc; ++i) {
@@ -349,6 +419,8 @@ int main(int argc, char* argv[]) {
             }
         } else if (arg == "--italic") {
             italic = true;
+        } else if (arg == "--versequotes") {
+            verseQuotes = true;
         } else if (arg == "--print") {
             printPdf = true;
         } else if (arg.find("-") == 0) {
@@ -429,7 +501,7 @@ int main(int argc, char* argv[]) {
 
             string verseText = lookupVerses(token, verseNumbers);
             if (!verseText.empty()) {
-                out << formatCitation(verseText, token, version, markdown, refStyle, italic) << endl << endl;
+                out << formatCitation(verseText, token, version, markdown, refStyle, italic, verseQuotes) << endl << endl;
             } else {
                 cerr << "Reference not found: " << token << endl;
             }
@@ -449,14 +521,36 @@ int main(int argc, char* argv[]) {
 
         for (const auto& v : selectedTract.sections) {
             if (v.section_title.length() > 0) {
+                bool textOnSameLine = v.text.length() > 0 && v.text[0] != '\n';
                 if (markdown) {
-                    out << "\n## " << v.section_title << "\n" << endl;
+                    string title = isPdf ? convertSpansToPdfColor(v.section_title) : v.section_title;
+                    if (textOnSameLine) {
+                        out << "\n**" << title << "**";
+                    } else {
+                        out << "\n## " << title;
+                    }
                 } else {
-                    out << v.section_title << endl;
+                    out << v.section_title;
                 }
-            }
-            if (v.text.length() > 0) {
-                string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers);
+                if (v.text.length() > 0) {
+                    string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf);
+                    if (markdown) {
+                        string hardBreak;
+                        for (size_t i = 0; i < processedText.size(); ++i) {
+                            if (processedText[i] == '\n' && (i < 2 || processedText[i-1] != ' ' || processedText[i-2] != ' ')) {
+                                hardBreak += "  \n";
+                            } else {
+                                hardBreak += processedText[i];
+                            }
+                        }
+                        processedText = hardBreak;
+                    }
+                    out << " " << processedText << "\n" << endl;
+                } else {
+                    out << "\n" << endl;
+                }
+            } else if (v.text.length() > 0) {
+                string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf);
                 out << processedText << "\n" << endl;
             }
         }
@@ -477,7 +571,7 @@ int main(int argc, char* argv[]) {
         tmp.close();
 
         // Build pandoc command
-        string cmd = "pandoc -f markdown -V geometry:margin=" + pdfMargin;
+        string cmd = "pandoc -f markdown+raw_tex -V geometry:margin=" + pdfMargin;
         string headerFile = outputFile + ".tmp.tex";
 
         // Use xelatex + fontspec Scale to handle font and font size together.
@@ -485,20 +579,31 @@ int main(int argc, char* argv[]) {
         // This is more reliable than \fontsize with xelatex since fontspec
         // controls font rendering and overrides \fontsize in AtBeginDocument.
         double scale = pdfFontSizePct / 100.0;
-        if (!pdfFont.empty()) {
-            // Use xelatex and set the font + scale together in a header file.
-            // We do NOT pass -V mainfont= to pandoc because the template calls
-            // \setmainfont before -H header includes, which would ignore Scale.
-            // Instead we load fontspec and call \setmainfont[Scale=X]{Font} ourselves.
-            cmd += " --pdf-engine=xelatex";
+        bool needHeader = !pdfFont.empty() || !pdfColorRegistry.empty();
+        if (needHeader) {
+            if (!pdfFont.empty()) {
+                // Use xelatex and set the font + scale together in a header file.
+                // We do NOT pass -V mainfont= to pandoc because the template calls
+                // \setmainfont before -H header includes, which would ignore Scale.
+                // Instead we load fontspec and call \setmainfont[Scale=X]{Font} ourselves.
+                cmd += " --pdf-engine=xelatex";
+            }
             ofstream hdr(headerFile);
             if (!hdr) {
                 cerr << "Error: could not create header file '" << headerFile << "'." << endl;
                 remove(tmpFile.c_str());
                 return 1;
             }
-            hdr << "\\usepackage{fontspec}\n";
-            hdr << "\\setmainfont[Scale=" << scale << "]{" << pdfFont << "}\n";
+            if (!pdfFont.empty()) {
+                hdr << "\\usepackage{fontspec}\n";
+                hdr << "\\setmainfont[Scale=" << scale << "]{" << pdfFont << "}\n";
+            }
+            if (!pdfColorRegistry.empty()) {
+                hdr << "\\usepackage{xcolor}\n";
+                for (const auto& entry : pdfColorRegistry) {
+                    hdr << "\\definecolor{" << entry.second << "}{HTML}{" << entry.first << "}\n";
+                }
+            }
             hdr.close();
             cmd += " -H \"" + headerFile + "\"";
         }
