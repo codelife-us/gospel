@@ -36,6 +36,7 @@
 #include <cstdio>
 #ifdef _WIN32
 #include <windows.h>
+#include <conio.h>
 #define popen  _popen
 #define pclose _pclose
 #else
@@ -45,7 +46,7 @@
 
 using namespace std;
 
-const string VERSION = "1.1";
+const string VERSION = "1.2";
 const string CONFIG_FILE = ".gospel";
 
 // ── Config file (.gospel in current directory) ────────────────────────────────

@@ -14,15 +14,23 @@ A C++ program that renders a Bible verse reference to a JPEG image with auto-fit
 - Verse ranges (`John 3:16-17`), verse-to-end-of-chapter (`Romans 8:28-`)
 - Configurable image size (default 1920×1080)
 - Configurable colors for background, verse text, and citation
+- Optional curly quotation marks around the verse text
+- Configurable citation font size (or auto-scaled based on image height)
 - Custom font support
-- Config file (`.bvi`) stores per-folder defaults for version, size, and colors
+- Config file (`.bvi`) stores per-folder defaults for version, size, colors, and style
 - Default output filename derived from the reference (e.g. `John_3_16.jpg`)
 - Auto-prompts to download the Bible translation file if not found
 
 ## Building
 
+**macOS / Linux (g++):**
 ```bash
 g++ -std=c++11 -o bvi bvi.cpp
+```
+
+**Windows (MSVC — run in Developer Command Prompt):**
+```bat
+cl /EHsc /std:c++17 bvi.cpp /Fe:bvi.exe
 ```
 
 ## Requirements
@@ -72,6 +80,24 @@ Colors accept any value ImageMagick understands: named colors, hex codes, or Ima
 | `--textcolor=COLOR` | `white` | Verse text color |
 | `--citecolor=COLOR` | `gray60` | Citation line color |
 
+## Quotation Marks
+
+Add curly `"` `"` quotation marks around the verse text:
+
+```bash
+./bvi "John 3:16" --quotes
+./bvi "John 3:16" --no-quotes   # explicitly off (default)
+```
+
+## Citation Size
+
+By default the citation point size is auto-scaled based on image height (~30pt at 1080p). Override with a fixed size:
+
+```bash
+./bvi "John 3:16" --citesize=40
+./bvi "John 3:16" --width=1080 --height=1080 --citesize=24
+```
+
 ## Font
 
 The default font is `Palatino` (macOS), `Palatino Linotype` (Windows), or `DejaVu-Serif` (Linux). Override with a font name or file path:
@@ -92,7 +118,7 @@ Run `--saveconfig` to save the current settings as defaults for the current fold
 
 Save current settings as defaults:
 ```bash
-./bvi --bg="#1a1a2e" --textcolor="#e8e8f0" --citecolor="#8888bb" -bv=KJV --saveconfig
+./bvi --bg="#1a1a2e" --textcolor="#e8e8f0" --citecolor="#8888bb" -bv=KJV --quotes --citesize=32 --saveconfig
 ```
 
 Show current effective settings:
@@ -110,9 +136,11 @@ font      = /System/Library/Fonts/Palatino.ttc
 bg        = #1a1a2e
 textcolor = #e8e8f0
 citecolor = #8888bb
+quotes    = yes
+citesize  = 32
 ```
 
-Supported keys: `bv`, `width`, `height`, `font`, `bg`, `textcolor`, `citecolor`
+Supported keys: `bv`, `width`, `height`, `font`, `bg`, `textcolor`, `citecolor`, `quotes`, `citesize`
 
 ## Bible Translations
 

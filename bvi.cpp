@@ -41,7 +41,7 @@
 
 using namespace std;
 
-const string BVI_VERSION = "1.0";
+const string BVI_VERSION = "1.2";
 const string CONFIG_FILE = ".bvi";
 
 // ── Config file (.bvi in current directory) ───────────────────────────────────
@@ -175,11 +175,14 @@ void printHelp() {
     cout << "  --font=FONT             Font name or file path\n";
     cout << "  --bg=COLOR              Background color (default: black)\n";
     cout << "  --textcolor=COLOR       Verse text color (default: white)\n";
-    cout << "  --citecolor=COLOR       Citation text color (default: gray60)\n\n";
+    cout << "  --citecolor=COLOR       Citation text color (default: gray60)\n";
+    cout << "  --quotes                Wrap verse text in \xe2\x80\x9c\xe2\x80\x9d quotation marks\n";
+    cout << "  --no-quotes             Remove quotation marks (default)\n";
+    cout << "  --citesize=N            Citation font size in points (default: auto ~30pt at 1080p)\n\n";
     cout << "Config file (.bvi in current directory):\n";
     cout << "  --saveconfig            Save current settings to .bvi as new defaults\n";
     cout << "  --showconfig            Print current effective settings and exit\n\n";
-    cout << "  Supported keys in .bvi:  bv  width  height  font  bg  textcolor  citecolor\n\n";
+    cout << "  Supported keys in .bvi:  bv  width  height  font  bg  textcolor  citecolor  quotes  citesize\n\n";
     cout << "Requires:\n";
     cout << "  ImageMagick  —  brew install imagemagick\n\n";
     cout << "Examples:\n";
@@ -202,7 +205,7 @@ int main(int argc, char* argv[]) {
 #ifdef __APPLE__
     const string defaultFont = "/System/Library/Fonts/Palatino.ttc";
 #elif defined(_WIN32)
-    const string defaultFont = "Palatino Linotype";
+    const string defaultFont = "C:/Windows/Fonts/pala.ttf";
 #else
     const string defaultFont = "DejaVu-Serif";
 #endif
@@ -210,12 +213,14 @@ int main(int argc, char* argv[]) {
     string version    = cfgGet(cfg, "bv",        "KJV");
     string reference;
     string outputFile;
-    int imgWidth      = stoi(cfgGet(cfg, "width",  "1920"));
-    int imgHeight     = stoi(cfgGet(cfg, "height", "1080"));
-    string font       = cfgGet(cfg, "font",      defaultFont);
-    string bgColor    = cfgGet(cfg, "bg",         "black");
-    string textColor  = cfgGet(cfg, "textcolor",  "white");
-    string citeColor  = cfgGet(cfg, "citecolor",  "gray60");
+    int imgWidth      = stoi(cfgGet(cfg, "width",     "1920"));
+    int imgHeight     = stoi(cfgGet(cfg, "height",    "1080"));
+    string font       = cfgGet(cfg, "font",           defaultFont);
+    string bgColor    = cfgGet(cfg, "bg",             "black");
+    string textColor  = cfgGet(cfg, "textcolor",      "white");
+    string citeColor  = cfgGet(cfg, "citecolor",      "gray60");
+    bool quotes       = cfgGet(cfg, "quotes",         "no") == "yes";
+    int citeSizeOvr   = stoi(cfgGet(cfg, "citesize",  "0")); // 0 = auto
 
     bool saveConfig  = false;
     bool showConfig  = false;
@@ -247,6 +252,12 @@ int main(int argc, char* argv[]) {
             textColor = arg.substr(12);
         } else if (arg.find("--citecolor=") == 0) {
             citeColor = arg.substr(12);
+        } else if (arg == "--quotes") {
+            quotes = true;
+        } else if (arg == "--no-quotes") {
+            quotes = false;
+        } else if (arg.find("--citesize=") == 0) {
+            citeSizeOvr = stoi(arg.substr(11));
         } else if (arg == "--saveconfig") {
             saveConfig = true;
         } else if (arg == "--showconfig") {
@@ -274,6 +285,8 @@ int main(int argc, char* argv[]) {
         cout << "  bg         = " << bgColor   << "\n";
         cout << "  textcolor  = " << textColor << "\n";
         cout << "  citecolor  = " << citeColor << "\n";
+        cout << "  quotes     = " << (quotes ? "yes" : "no") << "\n";
+        cout << "  citesize   = " << (citeSizeOvr > 0 ? to_string(citeSizeOvr) : "auto") << "\n";
         ifstream check(CONFIG_FILE);
         if (check.good())
             cout << "\nConfig file: ./" << CONFIG_FILE << " (loaded)\n";
@@ -297,6 +310,8 @@ int main(int argc, char* argv[]) {
         f << "bg        = " << bgColor   << "\n";
         f << "textcolor = " << textColor << "\n";
         f << "citecolor = " << citeColor << "\n";
+        f << "quotes    = " << (quotes ? "yes" : "no") << "\n";
+        f << "citesize  = " << citeSizeOvr << "\n";
         cerr << "Saved defaults to ./" << CONFIG_FILE << "\n";
         return 0;
     }
@@ -361,6 +376,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Optionally wrap verse in curly quotation marks
+    if (quotes)
+        verseText = "\xe2\x80\x9c" + verseText + "\xe2\x80\x9d";
+
     // Citation line, e.g. "— Philippians 4:6-7 (KJV)"
     string citation = "\xe2\x80\x94 " + reference + " (" + version + ")";
 
@@ -393,7 +412,7 @@ int main(int argc, char* argv[]) {
     int verseOffY = (int)(40 * scale);          // pixels above image center
 
     // Citation: fixed point size, placed near the bottom edge.
-    int citePt    = max(20, (int)(30 * scale)); // ~30pt at 1080p
+    int citePt    = (citeSizeOvr > 0) ? citeSizeOvr : max(20, (int)(30 * scale)); // ~30pt at 1080p
     int citeOffY  = max(20, (int)(55 * scale)); // pixels inward from bottom edge
 
     // Temp file for the intermediate verse layer PNG.
