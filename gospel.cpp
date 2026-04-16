@@ -38,6 +38,9 @@
 #include <windows.h>
 #define popen  _popen
 #define pclose _pclose
+#else
+#include <termios.h>
+#include <unistd.h>
 #endif
 
 using namespace std;
@@ -92,17 +95,15 @@ vector<Section> romansRoadSections = {
     {"What is The Romans Road?", "\nSimply put, the Romans Road shows the path to Heaven. It uses points from the book of Romans in the Bible to explain God’s gift of salvation. At each stop we learn something new about why we need salvation, how God has provided for it, and how we receive it.\n"
 "\nAs you look at each of the six points outlined here, take time to reflect on what God’s Word has to say. Remember that the book of Romans was written to people just like you and me: people living in a busy culture, trying to make sense of what is true and what is most important in life.\n"
 "\nThe Romans Road describes the only way to Heaven. Study it, learn it, and follow it!"},
-    {"1. Everyone Needs Salvation", "[Romans 3:23]"},
-    {"2. Jesus Died For Our Salvation", "[Romans 5:8]"},
-    {"3. Salvation Is A Gift", "[Romans 6:23]"},
-    {"4. We Are Saved By Grace", "[Romans 11:6]"},
-    {"5. Salvation Comes Through Faith", "[Romans 4:5]"},
-    {"6. God Saves All Who Call Upon Him", "[Romans 10:13]\n"},
-    {"","Follow the Romans Road to salvation today. Recognize that you are a sinner and that your sin must be judged by God. See that Jesus died to pay the penalty for your sin, but that you must choose to accept His provision. Understand that you cannot earn your way to Heaven through good works or religious activity. Now turn to God and put your faith in Jesus Christ who died for you and rose again.\n"},
-    {"","[Romans 10:9-10]"}
+    {"1. Everyone Needs Salvation", "\n[Romans 3:23]"},
+    {"2. Jesus Died For Our Salvation", "\n[Romans 5:8]"},
+    {"3. Salvation Is A Gift", "\n[Romans 6:23]"},
+    {"4. We Are Saved By Grace", "\n[Romans 11:6]"},
+    {"5. Salvation Comes Through Faith", "\n[Romans 4:5]"},
+    {"6. God Saves All Who Call Upon Him", "\n[Romans 10:13]\nThe Bible says there are two roads in life: one is the way to eternal joy in Heaven, and the other leads to eternal punishment in Hell. Which road are you on?\n\nFollow the Romans Road to salvation today. Recognize that you are a sinner and that your sin must be judged by God. See that Jesus died to pay the penalty for your sin, but that you must choose to accept His provision. Understand that you cannot earn your way to Heaven through good works or religious activity. Now turn to God and put your faith in Jesus Christ who died for you and rose again.\n[Romans 10:9-10]"},
 };
 
-vector<Section> tracts2 = {
+vector<Section> tract2 = {
     {"<span style=\"color: red;\">Somebody Loves You</span>", "\nThe creator of all things loves <span style=\"color: #0c9c30;\">YOU</span> so much that He sent His only Son, Jesus, to die for you on the cross. He wants to forgive your sins and make you clean so that you can be with Him for all eternity. Isn’t it amazing to know that you are loved by God?\n\n**HIS LOVE FOR YOU IS:...**"},
     {"<span style=\"color: red;\">Unending</span>", "— God’s love is eternal. He loved you yesterday, loves you today and will love you forever!\n\n[Jeremiah 31:3]"},
     {"<span style=\"color: red;\">Unselfish</span>", "— God didn’t wait for us to love Him first. His love was freely given.\n\n[1 John 4:19]\n"},
@@ -111,11 +112,19 @@ vector<Section> tracts2 = {
     {"<span style=\"color: red;\">Undying</span>", "— God didn’t only send Jesus to die for our sins. He then raised Him from the dead so we can have eternal life. What a wonderful gift He offers us!\n\n[1 John 4:9]\n"},
     {"<span style=\"color: red;\">Unmerited</span>", "— God offers you the free gift of salvation through Jesus Christ. Because it is a gift, you cannot earn it. Instead, you must see your need of salvation and accept it by trusting Jesus as your Savior.\n\n[Ephesians 2:8-9]\n\nHow can you receive God’s gift of salvation? The Bible says:\n\n[Romans 10:9]\n\nIt’s that easy! Will you choose to accept God’s love? Then you too can experience God’s unfathomable love for all eternity!\n\n[Romans 8:38-39]\n"}
 };
+vector<Section> tract3 = {
+    {"Have a good day!","Have you ever stopped to think about how many times a day this phrase is used? Whether we’re at a store, an appointment, or even just talking to a neighbor next door, we usually hear...\n\n<center>**Have a good day!**</center>\n\nNow, just receiving this wish doesn’t guarantee our day will go smoothly. Life happens and four words can’t erase all of the difficult things we face. We’re left to ask ourselves, how can we ever truly have a good day—not only today, but every day?"},
+    {"A Good Day and a Good Forever","It’s hard to have a good day when we’re unsure of the future. How will I pay that bill? What will the test results show? Looking further ahead, uncertainty about death and what comes after it can also weigh on our minds. So often, we distract ourselves with things in our lives that make us happy and keep us busy.\n\nBut have you seriously considered what your future holds? Do you know where you will spend eternity? There are only two choices—Heaven or Hell. And only one of those guarantees you a good forever."},
+    {"One Little Word","There is one thing that determines where we will spend our forever—our sin. Anything we say, do, or think that goes against what God wants is considered sin and separates us from Him. The Bible says, “all have sinned, and come short of the glory of God” (Romans 3:23). Sin will keep you from having a good forever, and it often keeps you from having a good day. God, who is holy, must punish sin. We read that “the wages of sin is death” (Romans 6:23) and that sin leads to judgment (Hebrews 9:27). Definitely not a good day!"},
+    {"God Provided the Way","But there is good news! Even though we are sinners, God loves us so much He has provided the way for us to spend eternity in Heaven with Him. The Bible says, [Romans 5:8]"},
+    {"The Source of Good Days","Will you accept His free gift of salvation? Admit you are a sinner, believe that Jesus died for your sins, and confess that He is your Lord and Savior today. Then as a believer, you will not only be sure of a good forever, you will also be able to have a good day every day. Jesus will never leave you, and the more you fellowship with Him through prayer and reading the Bible daily, the more you will experience His presence in your life. Even if everything around you seems dark and discouraging, walking with God will let you say: [Psalm 118:24]"}
+};
 
 // Available tracts
 map<string, Tract> availableTracts = {
     {"The Romans Road", {"The Romans Road", romansRoadSections}},
-    {"Somebody Loves You", {"Somebody Loves You", tracts2}}
+    {"Somebody Loves You", {"Somebody Loves You", tract2}},
+    {"Have A Good Day", {"Have A Good Day", tract3}}
 };
 
 // Function to load Bible verses from file
@@ -307,9 +316,41 @@ string convertSpansToPdfColor(const string& text) {
     return result;
 }
 
+// Convert <center>...</center> to \begin{center}...\end{center} for PDF output.
+// Also converts **bold** to \textbf{} inside center blocks, since pandoc won't
+// process markdown inside raw LaTeX blocks.
+string convertCenteringToPdf(const string& text) {
+    regex centerPattern("<center>([\\s\\S]*?)</center>", regex::icase);
+    sregex_iterator it(text.cbegin(), text.cend(), centerPattern);
+    sregex_iterator end;
+    string result;
+    size_t lastEnd = 0;
+
+    for (; it != end; ++it) {
+        const smatch& m = *it;
+        result += text.substr(lastEnd, m.position() - lastEnd);
+        string content = m[1].str();
+        content = regex_replace(content, regex("\\*\\*([^*]+)\\*\\*"), "\\\\textbf{$1}");
+        result += "\\begin{center}" + content + "\\end{center}";
+        lastEnd = m.position() + m.length();
+    }
+    result += text.substr(lastEnd);
+    return result;
+}
+
+string convertForPdf(const string& text) {
+    return convertCenteringToPdf(convertSpansToPdfColor(text));
+}
+
+// Strip <center>...</center> tags for markdown output, leaving only the content.
+string stripCenterTags(const string& text) {
+    regex centerPattern("<center>([\\s\\S]*?)</center>", regex::icase);
+    return regex_replace(text, centerPattern, "$1");
+}
+
 // Process markdown text with embedded bible references
 string processMarkdownReferences(const string& text, const string& version, bool markdown, int refStyle, bool verseNumbers, bool verseQuotes = false, bool isPdf = false, bool verseNewline = false) {
-    string result = isPdf ? convertSpansToPdfColor(text) : text;
+    string result = isPdf ? convertForPdf(text) : (markdown ? stripCenterTags(text) : text);
     regex refPattern("\\[([^\\]]+)\\]");
     smatch match;
     string::const_iterator searchStart(text.cbegin());
@@ -336,6 +377,92 @@ string processMarkdownReferences(const string& text, const string& version, bool
     return result;
 }
 
+// Interactive arrow-key tract picker. Returns the selected tract name, or ""
+// if the user cancels with 'q' or Ctrl+C.
+string tractPick() {
+    vector<string> names;
+    for (const auto& t : availableTracts) names.push_back(t.first);
+    sort(names.begin(), names.end());
+
+#ifdef _WIN32
+    // Windows: use _getch for raw key input
+    int sel = 0;
+    int n = (int)names.size();
+    auto clearLines = [&](int count) {
+        for (int i = 0; i < count; ++i) {
+            cout << "\033[A\033[2K";
+        }
+    };
+    auto draw = [&]() {
+        cout << "Select a tract (arrow keys + Enter, q to cancel):\n";
+        for (int i = 0; i < n; ++i) {
+            cout << (i == sel ? "  > " : "    ") << names[i] << "\n";
+        }
+        cout.flush();
+    };
+    draw();
+    while (true) {
+        int ch = _getch();
+        if (ch == 0 || ch == 0xE0) {
+            int ch2 = _getch();
+            clearLines(n + 1);
+            if (ch2 == 72 && sel > 0) --sel;       // up
+            else if (ch2 == 80 && sel < n-1) ++sel; // down
+            draw();
+        } else if (ch == '\r' || ch == '\n') {
+            clearLines(n + 1);
+            return names[sel];
+        } else if (ch == 'q' || ch == 'Q' || ch == 3) {
+            clearLines(n + 1);
+            return "";
+        }
+    }
+#else
+    // Unix: use termios raw mode
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    int sel = 0;
+    int n = (int)names.size();
+    auto clearLines = [&](int count) {
+        for (int i = 0; i < count; ++i) cout << "\033[A\033[2K";
+    };
+    auto draw = [&]() {
+        cout << "Select a tract (arrow keys + Enter, q to cancel):\n";
+        for (int i = 0; i < n; ++i)
+            cout << (i == sel ? "  > " : "    ") << names[i] << "\n";
+        cout.flush();
+    };
+    draw();
+    string result;
+    while (true) {
+        int ch = getchar();
+        if (ch == 27) {                     // escape sequence
+            int ch2 = getchar();
+            if (ch2 == '[') {
+                int ch3 = getchar();
+                clearLines(n + 1);
+                if (ch3 == 'A' && sel > 0) --sel;       // up arrow
+                else if (ch3 == 'B' && sel < n-1) ++sel; // down arrow
+                draw();
+            }
+        } else if (ch == '\n' || ch == '\r') {
+            clearLines(n + 1);
+            result = names[sel];
+            break;
+        } else if (ch == 'q' || ch == 'Q' || ch == 3) {
+            clearLines(n + 1);
+            break;
+        }
+    }
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    return result;
+#endif
+}
+
 void printHelp() {
     cout << "gospel v" << VERSION << endl;
     cout << "\nUsage: gospel [OPTIONS]" << endl;
@@ -346,6 +473,8 @@ void printHelp() {
     cout << "  --bibleversion=VERSION  Specify Bible version (KJV, BSB, WEB)" << endl;
     cout << "  --outputtype=TYPE       Set output type (plaintext, md)" << endl;
     cout << "  -tn=NAME                Set tract name (default: 'The Romans Road')" << endl;
+    cout << "  --tractlist, -tl        List available tract names and exit" << endl;
+    cout << "  --tractpick, -tp        Interactively pick a tract by name with arrow keys" << endl;
     cout << "  --tractname=NAME        Specify tract presentation by name" << endl;
     cout << "  --ref=REF                Output a Bible reference directly (use comma to separate multiple)" << endl;
     cout << "                           REF formats: Book Ch:V  Book Ch:V-V  Book Ch:V-  Book Ch" << endl;
@@ -487,6 +616,13 @@ int main(int argc, char* argv[]) {
             chapterHeader = true;
         } else if (arg == "--print") {
             printPdf = true;
+        } else if (arg == "--tractlist" || arg == "-tl") {
+            for (const auto& t : availableTracts) cout << t.first << endl;
+            return 0;
+        } else if (arg == "--tractpick" || arg == "-tp") {
+            string picked = tractPick();
+            if (picked.empty()) return 0;
+            tractName = picked;
         } else if (arg == "--saveconfig") {
             saveConfig = true;
         } else if (arg == "--showconfig") {
@@ -637,6 +773,19 @@ int main(int argc, char* argv[]) {
             }
         }
     } else {
+        // Case-insensitive tract name lookup
+        auto toLower = [](string s) {
+            transform(s.begin(), s.end(), s.begin(), ::tolower);
+            return s;
+        };
+        string tractNameLower = toLower(tractName);
+        for (const auto& tract : availableTracts) {
+            if (toLower(tract.first) == tractNameLower) {
+                tractName = tract.first;
+                break;
+            }
+        }
+
         // Check if tract exists
         if (availableTracts.find(tractName) == availableTracts.end()) {
             cerr << "Error: Tract '" << tractName << "' not found." << endl;
@@ -653,7 +802,7 @@ int main(int argc, char* argv[]) {
             if (v.section_title.length() > 0) {
                 bool textOnSameLine = v.text.length() > 0 && v.text[0] != '\n';
                 if (markdown) {
-                    string title = isPdf ? convertSpansToPdfColor(v.section_title) : v.section_title;
+                    string title = isPdf ? convertForPdf(v.section_title) : stripCenterTags(v.section_title);
                     if (textOnSameLine) {
                         out << "\n**" << title << "**";
                     } else {
