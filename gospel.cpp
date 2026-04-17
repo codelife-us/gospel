@@ -116,16 +116,39 @@ vector<Section> tract2 = {
 vector<Section> tract3 = {
     {"Have a good day!","Have you ever stopped to think about how many times a day this phrase is used? Whether we’re at a store, an appointment, or even just talking to a neighbor next door, we usually hear...\n\n<center>**Have a good day!**</center>\n\nNow, just receiving this wish doesn’t guarantee our day will go smoothly. Life happens and four words can’t erase all of the difficult things we face. We’re left to ask ourselves, how can we ever truly have a good day—not only today, but every day?"},
     {"A Good Day and a Good Forever","It’s hard to have a good day when we’re unsure of the future. How will I pay that bill? What will the test results show? Looking further ahead, uncertainty about death and what comes after it can also weigh on our minds. So often, we distract ourselves with things in our lives that make us happy and keep us busy.\n\nBut have you seriously considered what your future holds? Do you know where you will spend eternity? There are only two choices—Heaven or Hell. And only one of those guarantees you a good forever."},
-    {"One Little Word","There is one thing that determines where we will spend our forever—our sin. Anything we say, do, or think that goes against what God wants is considered sin and separates us from Him. The Bible says, “all have sinned, and come short of the glory of God” (Romans 3:23). Sin will keep you from having a good forever, and it often keeps you from having a good day. God, who is holy, must punish sin. We read that “the wages of sin is death” (Romans 6:23) and that sin leads to judgment (Hebrews 9:27). Definitely not a good day!"},
+    {"One Little Word","There is one thing that determines where we will spend our forever—our sin. Anything we say, do, or think that goes against what God wants is considered sin and separates us from Him. The Bible says,\n[Romans 3:23]\nSin will keep you from having a good forever, and it often keeps you from having a good day. God, who is holy, must punish sin. We read that\n[Romans 6:23]\nSin also leads to judgment:\n[Hebrews 9:27]\nDefinitely not a good day!"},
     {"God Provided the Way","But there is good news! Even though we are sinners, God loves us so much He has provided the way for us to spend eternity in Heaven with Him. The Bible says, [Romans 5:8]"},
     {"The Source of Good Days","Will you accept His free gift of salvation? Admit you are a sinner, believe that Jesus died for your sins, and confess that He is your Lord and Savior today. Then as a believer, you will not only be sure of a good forever, you will also be able to have a good day every day. Jesus will never leave you, and the more you fellowship with Him through prayer and reading the Bible daily, the more you will experience His presence in your life. Even if everything around you seems dark and discouraging, walking with God will let you say: [Psalm 118:24]"}
+};
+
+vector<Section> tract4 = {
+    {"You must meet God. Are you ready?","\nIn comparison with this question, all others are utterly insignificant. You may be successful in business, have a wonderful family, and be healthy in both body and mind. You may even be religious and respected by all. But can you say with certainty that **you are ready to meet God?**\n"},
+    {"","To be ready to meet God requires a new birth.\n[John 3:3]\n\nThis statement has no exceptions. It cannot be ignored, as it was given by the Lord Jesus Christ. Have you been born again?\n"
+        "\nThe need for new birth arises from the fact that we are **all** sinners by birth and by practice. Sin is contrary to the nature of God. He hates sin, and it keeps us from having fellowship with Him. The Bible declares:\n[Habakkuk 1:13]\n"
+        "\nBut while God hates sin, He **loves** sinners. In fact, He loves us whether we walk the clean or filthy side of the road to Hell. Because He loves us, He has provided the way for us to be restored to fellowship with Him:\n[John 3:16]\n"
+        "\nGod’s judgment for sin **fell upon Christ** on the cross, and there is cleansing and forgiveness for all who **believe on Him.**\n[John 1:12]\nThrough new birth, by receiving Christ, by believing He died for my sins, I am born into the family of God and can answer the question **“Are you ready?”** with a glad and confident “Yes!”\n"
+        "\nHave you known this change? Have you experienced this new birth? Have you turned to God in repentance, admitting that you are a sinner in need of salvation? Have you given up the false idea that you can earn God’s favor through your own “good” works? Have you by faith accepted Jesus Christ as your Savior and Lord?\n"
+        "\nDo not resent these personal questions, for they are intended to lead you to **blessing.** If I were to tell you of a path to wealth and fame you would probably be very interested. What Jesus Christ offers you—forgiveness of sins and eternal life with Him in Heaven—is of **infinite** value. Put the matter to the test. Do it now.\n"
+        "\nThe terms are simple:\n[1 John 3:23]\n\nWill you receive Him, the living Christ of God who died, rose again, and now offers salvation to all who believe on Him? Will you trust Him **now** as your very own Savior? It is not the reception of a creed, or identification with a church, or becoming a religious person that saves. It is the acceptance of a Person, the Son of God. Your acceptance or rejection of Him answers the solemn question, “Are you ready?”\n"
+        "\n[Hebrews 9:27]\nWhen you stand before God, will you be **stained** with your sin or will you have been washed **clean** through faith in Jesus Christ? The issue is very clear: your response to Jesus Christ **now** will determine your destiny for **eternity**.\n\n[Acts 4:12]\n[Acts 16:31]\n"},
+    {"You must meet God. Are you ready?",""}
 };
 
 // Available tracts
 map<string, Tract> availableTracts = {
     {"The Romans Road", {"The Romans Road", romansRoadSections}},
     {"Somebody Loves You", {"Somebody Loves You", tract2}},
-    {"Have A Good Day", {"Have A Good Day", tract3}}
+    {"Have A Good Day", {"Have A Good Day", tract3}},
+    {"Are You Ready", {"Are You Ready", tract4}}
+};
+
+struct TractDefaults {
+    int refStyle = -1;      // -1 means no override
+    int verseQuotes = -1;   // -1 means no override, 0 = false, 1 = true
+};
+
+map<string, TractDefaults> tractDefaults = {
+    {"Are You Ready", {3, 1}}
 };
 
 // Function to load Bible verses from file
@@ -349,9 +372,14 @@ string stripCenterTags(const string& text) {
     return regex_replace(text, centerPattern, "$1");
 }
 
+// Strip **bold** markers for plain text output, leaving only the content.
+string stripBoldMarkers(const string& text) {
+    return regex_replace(text, regex("\\*\\*([^*]+)\\*\\*"), "$1");
+}
+
 // Process markdown text with embedded bible references
 string processMarkdownReferences(const string& text, const string& version, bool markdown, int refStyle, bool verseNumbers, bool verseQuotes = false, bool isPdf = false, bool verseNewline = false) {
-    string result = isPdf ? convertForPdf(text) : (markdown ? stripCenterTags(text) : text);
+    string result = isPdf ? convertForPdf(text) : (markdown ? stripCenterTags(text) : stripBoldMarkers(text));
     regex refPattern("\\[([^\\]]+)\\]");
     smatch match;
     string::const_iterator searchStart(text.cbegin());
@@ -540,6 +568,8 @@ int main(int argc, char* argv[]) {
     bool chapterHeader = false;
     bool saveConfig = false;
     bool showConfig = false;
+    bool refStyleExplicit = false;
+    bool verseQuotesExplicit = false;
 
     // Parse command-line arguments
     for(int i = 1; i < argc; ++i) {
@@ -584,6 +614,7 @@ int main(int argc, char* argv[]) {
             size_t eq = arg.find('=');
             if (eq != string::npos) {
                 refStyle = stoi(arg.substr(eq + 1));
+                refStyleExplicit = true;
             }
         } else if (arg == "--versenumbers" || arg == "-vn") {
             verseNumbers = true;
@@ -613,6 +644,7 @@ int main(int argc, char* argv[]) {
             italic = true;
         } else if (arg == "--versequotes") {
             verseQuotes = true;
+            verseQuotesExplicit = true;
         } else if (arg == "--chapterheader" || arg == "-ch") {
             chapterHeader = true;
         } else if (arg == "--print") {
@@ -632,6 +664,25 @@ int main(int argc, char* argv[]) {
             cerr << "Error: unknown option '" << arg << "'" << endl;
             cerr << "Run 'gospel --help' for usage." << endl;
             return 1;
+        }
+    }
+
+    // Apply per-tract defaults for settings not explicitly set on the CLI
+    {
+        auto it = tractDefaults.find(tractName);
+        if (it == tractDefaults.end()) {
+            // try case-insensitive match
+            auto toLower = [](string s) { transform(s.begin(), s.end(), s.begin(), ::tolower); return s; };
+            string tractNameLower = toLower(tractName);
+            for (const auto& td : tractDefaults) {
+                if (toLower(td.first) == tractNameLower) { it = tractDefaults.find(td.first); break; }
+            }
+        }
+        if (it != tractDefaults.end()) {
+            if (!refStyleExplicit && it->second.refStyle >= 0)
+                refStyle = it->second.refStyle;
+            if (!verseQuotesExplicit && it->second.verseQuotes >= 0)
+                verseQuotes = (it->second.verseQuotes != 0);
         }
     }
 
