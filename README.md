@@ -5,7 +5,7 @@ A C++ program that displays various gospel presentation tracts, biblical framewo
 ## Features
 
 - Support for multiple gospel presentation tracts/styles
-- Currently includes "The Romans Road" (default) and "Somebody Loves You"
+- Currently includes four tracts: "The Romans Road" (default), "Somebody Loves You", "Have A Good Day", and "Are You Ready"
 - Easy to add new tracts by extending the code
 - Display tract content with biblical explanations
 - Support for multiple Bible translations:
@@ -24,6 +24,7 @@ A C++ program that displays various gospel presentation tracts, biblical framewo
 - Save output to a file with `--output=`, including PDF via pandoc
 - PDF font control: custom font (`--pdffont=`), size as percentage (`--pdffontsize=`), and margin (`--pdfmargin=`)
 - Print PDF directly to printer with `--print`
+- Batch export every tract in every Bible version as `.txt`, `.md`, and `.pdf` with `--outputall`
 - Command-line configurable tract name and Bible version
 - Invalid command line options are reported with an error
 - Auto-prompts to download the Bible translation file if not found
@@ -201,6 +202,22 @@ Print the PDF directly after generating:
 ./gospel --output=verse.pdf --print
 ./gospel --ref="John 3:16" --output=verse.pdf --print
 ```
+
+Batch export all tracts in all Bible versions as `.txt`, `.md`, and `.pdf`:
+```bash
+./gospel --outputall
+```
+
+Files are saved in the current directory using the naming pattern `tractname_VERSION.ext` (tract name lowercased, spaces removed), for example:
+```
+theromansroad_KJV.txt
+theromansroad_KJV.md
+theromansroad_KJV.pdf
+haveagoodday_BSB.txt
+...
+```
+
+Bible versions are skipped silently if their translation file is not present. PDF generation requires pandoc and a LaTeX engine (same as `--output=.pdf`). PDF font and margin options (`--pdffont=`, `--pdfmargin=`, `--pdffontsize=`) apply to all generated PDFs.
 
 To set or fix the default printer:
 

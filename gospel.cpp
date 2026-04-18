@@ -46,7 +46,7 @@
 
 using namespace std;
 
-const string VERSION = "1.2";
+const string VERSION = "1.3";
 const string CONFIG_FILE = ".gospel";
 
 // ── Config file (.gospel in current directory) ────────────────────────────────
@@ -354,7 +354,7 @@ string convertCenteringToPdf(const string& text) {
         const smatch& m = *it;
         result += text.substr(lastEnd, m.position() - lastEnd);
         string content = m[1].str();
-        content = regex_replace(content, regex("\\*\\*([^*]+)\\*\\*"), "\\\\textbf{$1}");
+        content = regex_replace(content, regex("\\*\\*([^*]+)\\*\\*"), "\\textbf{$1}");
         result += "\\begin{center}" + content + "\\end{center}";
         lastEnd = m.position() + m.length();
     }
@@ -372,6 +372,12 @@ string stripCenterTags(const string& text) {
     return regex_replace(text, centerPattern, "$1");
 }
 
+// Strip <span ...>...</span> tags for markdown output, leaving only the content.
+string stripSpanTags(const string& text) {
+    regex spanPattern("<span[^>]*>(.*?)</span>", regex::icase);
+    return regex_replace(text, spanPattern, "$1");
+}
+
 // Strip **bold** markers for plain text output, leaving only the content.
 string stripBoldMarkers(const string& text) {
     return regex_replace(text, regex("\\*\\*([^*]+)\\*\\*"), "$1");
@@ -379,7 +385,7 @@ string stripBoldMarkers(const string& text) {
 
 // Process markdown text with embedded bible references
 string processMarkdownReferences(const string& text, const string& version, bool markdown, int refStyle, bool verseNumbers, bool verseQuotes = false, bool isPdf = false, bool verseNewline = false) {
-    string result = isPdf ? convertForPdf(text) : (markdown ? stripCenterTags(text) : stripBoldMarkers(text));
+    string result = isPdf ? convertForPdf(text) : (markdown ? stripSpanTags(stripCenterTags(text)) : stripBoldMarkers(text));
     regex refPattern("\\[([^\\]]+)\\]");
     smatch match;
     string::const_iterator searchStart(text.cbegin());
@@ -492,6 +498,96 @@ string tractPick() {
 #endif
 }
 
+string generateTractContent(const Tract& tract, const string& version,
+                            bool markdown, bool isPdf, int refStyle,
+                            bool verseNumbers, bool verseQuotes, bool verseNewline) {
+    ostringstream out;
+    for (const auto& v : tract.sections) {
+        if (v.section_title.length() > 0) {
+            bool textOnSameLine = v.text.length() > 0 && v.text[0] != '\n';
+            if (markdown) {
+                string title = isPdf ? convertForPdf(v.section_title) : stripSpanTags(stripCenterTags(v.section_title));
+                if (textOnSameLine) {
+                    out << "\n**" << title << "**";
+                } else {
+                    out << "\n## " << title;
+                }
+            } else {
+                out << v.section_title;
+            }
+            if (v.text.length() > 0) {
+                string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf, verseNewline);
+                if (markdown) {
+                    string hardBreak;
+                    for (size_t i = 0; i < processedText.size(); ++i) {
+                        if (processedText[i] == '\n' && (i < 2 || processedText[i-1] != ' ' || processedText[i-2] != ' ')) {
+                            hardBreak += "  \n";
+                        } else {
+                            hardBreak += processedText[i];
+                        }
+                    }
+                    processedText = hardBreak;
+                }
+                out << " " << processedText << "\n" << endl;
+            } else {
+                out << "\n" << endl;
+            }
+        } else if (v.text.length() > 0) {
+            string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf, verseNewline);
+            out << processedText << "\n" << endl;
+        }
+    }
+    return out.str();
+}
+
+bool writePdfFile(const string& content, const string& outputFile,
+                  const string& pdfMargin, const string& pdfFont, int pdfFontSizePct) {
+    string tmpFile = outputFile + ".tmp.md";
+    ofstream tmp(tmpFile, ios::binary);
+    if (!tmp) {
+        cerr << "Error: could not create temporary file '" << tmpFile << "'." << endl;
+        return false;
+    }
+    tmp.write("\xEF\xBB\xBF", 3);
+    tmp << content;
+    tmp.close();
+
+    string cmd = "pandoc -f markdown+raw_tex -V geometry:margin=" + pdfMargin;
+    string headerFile = outputFile + ".tmp.tex";
+    double scale = pdfFontSizePct / 100.0;
+    bool needHeader = !pdfFont.empty() || !pdfColorRegistry.empty();
+    if (needHeader) {
+        if (!pdfFont.empty()) cmd += " --pdf-engine=xelatex";
+        ofstream hdr(headerFile);
+        if (!hdr) {
+            cerr << "Error: could not create header file '" << headerFile << "'." << endl;
+            remove(tmpFile.c_str());
+            return false;
+        }
+        if (!pdfFont.empty()) {
+            hdr << "\\usepackage{fontspec}\n";
+            hdr << "\\setmainfont[Scale=" << scale << "]{" << pdfFont << "}\n";
+        }
+        if (!pdfColorRegistry.empty()) {
+            hdr << "\\usepackage{xcolor}\n";
+            for (const auto& entry : pdfColorRegistry)
+                hdr << "\\definecolor{" << entry.second << "}{HTML}{" << entry.first << "}\n";
+        }
+        hdr.close();
+        cmd += " -H \"" + headerFile + "\"";
+    }
+    cmd += " \"" + tmpFile + "\" -o \"" + outputFile + "\"";
+    int ret = system(cmd.c_str());
+    remove(tmpFile.c_str());
+    remove(headerFile.c_str());
+    if (ret != 0) {
+        cerr << "Error: PDF conversion failed for '" << outputFile << "'." << endl;
+        return false;
+    }
+    cerr << "Saved " << outputFile << endl;
+    return true;
+}
+
 void printHelp() {
     cout << "gospel v" << VERSION << endl;
     cout << "\nUsage: gospel [OPTIONS]" << endl;
@@ -518,6 +614,7 @@ void printHelp() {
     cout << "  --versequotes            Wrap each Bible verse in curly quotes" << endl;
     cout << "  --chapterheader, -ch     Print book and chapter as a header when outputting a full chapter" << endl;
     cout << "  --print                  Send PDF to printer after generating (requires --output=.pdf)" << endl;
+    cout << "  --outputall              Output .txt, .md, .pdf for every tract and Bible version" << endl;
     cout << "\nConfig file (.gospel in current directory):" << endl;
     cout << "  --saveconfig             Save current settings to .gospel as new defaults" << endl;
     cout << "  --showconfig             Print current effective settings and exit" << endl;
@@ -533,6 +630,7 @@ void printHelp() {
     cout << "  gospel --ref=\"Romans 8\" -vn                       Display a full chapter with verse numbers" << endl;
     cout << "  gospel --output=tract.pdf                         Save tract as PDF (requires pandoc)" << endl;
     cout << "  gospel --ref=\"John 3:16\" --output=verse.pdf       Save verse as PDF (requires pandoc)" << endl;
+    cout << "  gospel --outputall                                Output .txt/.md/.pdf for all tracts and versions" << endl;
 }
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
@@ -570,6 +668,7 @@ int main(int argc, char* argv[]) {
     bool showConfig = false;
     bool refStyleExplicit = false;
     bool verseQuotesExplicit = false;
+    bool outputAll = false;
 
     // Parse command-line arguments
     for(int i = 1; i < argc; ++i) {
@@ -660,6 +759,8 @@ int main(int argc, char* argv[]) {
             saveConfig = true;
         } else if (arg == "--showconfig") {
             showConfig = true;
+        } else if (arg == "--outputall") {
+            outputAll = true;
         } else if (arg.find("-") == 0) {
             cerr << "Error: unknown option '" << arg << "'" << endl;
             cerr << "Run 'gospel --help' for usage." << endl;
@@ -725,6 +826,73 @@ int main(int argc, char* argv[]) {
 
     // Normalize version to uppercase for comparison
     transform(version.begin(), version.end(), version.begin(), ::toupper);
+
+    // --outputall: generate .txt, .md, .pdf for every tract × Bible version
+    if (outputAll) {
+        const vector<pair<string,string>> allVersions = {
+            {"KJV", "BibleKJV.txt"},
+            {"BSB", "BibleBSB.txt"},
+            {"WEB", "BibleWEB.txt"}
+        };
+        // Collect tract names in a stable order
+        vector<string> tractNames;
+        for (const auto& t : availableTracts) tractNames.push_back(t.first);
+
+        for (const auto& vp : allVersions) {
+            const string& ver   = vp.first;
+            const string& bFile = vp.second;
+            ifstream test(bFile);
+            if (!test.good()) {
+                cerr << "Skipping " << ver << ": '" << bFile << "' not found." << endl;
+                continue;
+            }
+            bibleVerses = loadBible(bFile);
+
+            for (const auto& tName : tractNames) {
+                const Tract& tract = availableTracts.at(tName);
+
+                // Apply per-tract defaults
+                int tractRefStyle = refStyle;
+                bool tractVerseQuotes = verseQuotes;
+                auto dit = tractDefaults.find(tName);
+                if (dit != tractDefaults.end()) {
+                    if (dit->second.refStyle >= 0)    tractRefStyle   = dit->second.refStyle;
+                    if (dit->second.verseQuotes >= 0) tractVerseQuotes = (dit->second.verseQuotes != 0);
+                }
+
+                // Build filename base: lowercase tract name, spaces removed, + "_" + version
+                string base = tName;
+                transform(base.begin(), base.end(), base.begin(), ::tolower);
+                base.erase(remove(base.begin(), base.end(), ' '), base.end());
+                base += "_" + ver;
+
+                // .txt
+                {
+                    string content = generateTractContent(tract, ver, false, false, tractRefStyle, false, tractVerseQuotes, false);
+                    ofstream f(base + ".txt");
+                    if (f) { f << content; cerr << "Saved " << base << ".txt" << endl; }
+                    else   { cerr << "Error: could not write '" << base << ".txt'." << endl; }
+                }
+
+                // .md
+                {
+                    string content = generateTractContent(tract, ver, true, false, tractRefStyle, false, tractVerseQuotes, false);
+                    ofstream f(base + ".md");
+                    if (f) { f << content; cerr << "Saved " << base << ".md" << endl; }
+                    else   { cerr << "Error: could not write '" << base << ".md'." << endl; }
+                }
+
+                // .pdf
+                {
+                    pdfColorRegistry.clear();
+                    pdfColorCounter = 0;
+                    string content = generateTractContent(tract, ver, true, true, tractRefStyle, false, tractVerseQuotes, false);
+                    writePdfFile(content, base + ".pdf", pdfMargin, pdfFont, pdfFontSizePct);
+                }
+            }
+        }
+        return 0;
+    }
 
     // Load Bible verses based on selected version
     string bibleFile;
@@ -849,42 +1017,7 @@ int main(int argc, char* argv[]) {
         }
 
         const Tract& selectedTract = availableTracts[tractName];
-
-        for (const auto& v : selectedTract.sections) {
-            if (v.section_title.length() > 0) {
-                bool textOnSameLine = v.text.length() > 0 && v.text[0] != '\n';
-                if (markdown) {
-                    string title = isPdf ? convertForPdf(v.section_title) : stripCenterTags(v.section_title);
-                    if (textOnSameLine) {
-                        out << "\n**" << title << "**";
-                    } else {
-                        out << "\n## " << title;
-                    }
-                } else {
-                    out << v.section_title;
-                }
-                if (v.text.length() > 0) {
-                    string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf, verseNewline);
-                    if (markdown) {
-                        string hardBreak;
-                        for (size_t i = 0; i < processedText.size(); ++i) {
-                            if (processedText[i] == '\n' && (i < 2 || processedText[i-1] != ' ' || processedText[i-2] != ' ')) {
-                                hardBreak += "  \n";
-                            } else {
-                                hardBreak += processedText[i];
-                            }
-                        }
-                        processedText = hardBreak;
-                    }
-                    out << " " << processedText << "\n" << endl;
-                } else {
-                    out << "\n" << endl;
-                }
-            } else if (v.text.length() > 0) {
-                string processedText = processMarkdownReferences(v.text, version, markdown, refStyle, verseNumbers, verseQuotes, isPdf, verseNewline);
-                out << processedText << "\n" << endl;
-            }
-        }
+        out << generateTractContent(selectedTract, version, markdown, isPdf, refStyle, verseNumbers, verseQuotes, verseNewline);
     }
 
     // Route output
