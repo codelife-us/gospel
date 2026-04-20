@@ -41,6 +41,12 @@
 
 using namespace std;
 
+#ifdef _WIN32
+#define HOME_ENV "USERPROFILE"
+#else
+#define HOME_ENV "HOME"
+#endif
+
 const string BVI_VERSION = "1.2";
 const string CONFIG_FILE = ".bvi";
 
@@ -369,10 +375,19 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Check Bible file; offer to download if missing
+    // Check Bible file; try HOME directory fallback, then offer to download
     {
         ifstream test(bibleFile);
         if (!test.good()) {
+            const char* home = getenv(HOME_ENV);
+            if (home) {
+                string homePath = string(home) + "/" + bibleFile;
+                ifstream homeTest(homePath);
+                if (homeTest.good()) {
+                    bibleFile = homePath;
+                    goto bible_ready;
+                }
+            }
             cerr << "Bible file '" << bibleFile << "' not found.\n";
             cerr << "Download it now? (y/n): ";
             char answer;
@@ -390,6 +405,7 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    bible_ready:
 
     bibleVerses = loadBible(bibleFile);
 

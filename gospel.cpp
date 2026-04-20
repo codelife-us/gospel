@@ -46,6 +46,12 @@
 
 using namespace std;
 
+#ifdef _WIN32
+#define HOME_ENV "USERPROFILE"
+#else
+#define HOME_ENV "HOME"
+#endif
+
 const string VERSION = "1.3";
 const string CONFIG_FILE = ".gospel";
 
@@ -143,8 +149,9 @@ map<string, Tract> availableTracts = {
 };
 
 struct TractDefaults {
-    int refStyle = -1;      // -1 means no override
-    int verseQuotes = -1;   // -1 means no override, 0 = false, 1 = true
+    int refStyle;
+    int verseQuotes;
+    TractDefaults(int rs = -1, int vq = -1) : refStyle(rs), verseQuotes(vq) {}
 };
 
 map<string, TractDefaults> tractDefaults = {
@@ -929,13 +936,20 @@ int main(int argc, char* argv[]) {
         for (const auto& t : availableTracts) tractNames.push_back(t.first);
 
         for (const auto& vp : allVersions) {
-            const string& ver   = vp.first;
-            const string& bFile = vp.second;
+            const string& ver = vp.first;
+            string bFile      = vp.second;
             ifstream test(bFile);
             if (!test.good()) {
+                const char* home = getenv(HOME_ENV);
+                if (home) {
+                    string homePath = string(home) + "/" + bFile;
+                    ifstream homeTest(homePath);
+                    if (homeTest.good()) { bFile = homePath; goto version_ready; }
+                }
                 cerr << "Skipping " << ver << ": '" << bFile << "' not found." << endl;
                 continue;
             }
+            version_ready:
             bibleVerses = loadBible(bFile);
 
             for (const auto& tName : tractNames) {
@@ -1017,6 +1031,16 @@ int main(int argc, char* argv[]) {
     {
         ifstream test(bibleFile);
         if (!test.good()) {
+            // Try $HOME directory
+            const char* home = getenv(HOME_ENV);
+            if (home) {
+                string homePath = string(home) + "/" + bibleFile;
+                ifstream homeTest(homePath);
+                if (homeTest.good()) {
+                    bibleFile = homePath;
+                    goto bible_ready;
+                }
+            }
             cerr << "Bible file '" << bibleFile << "' not found." << endl;
             cerr << "Download it now? (y/n): ";
             char answer;
@@ -1036,6 +1060,7 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    bible_ready:
 
     bibleVerses = loadBible(bibleFile);
 
