@@ -1,6 +1,6 @@
 # bv
 
-A lightweight C++ command-line tool for looking up Bible verses and outputting them to stdout. A stripped-down companion to `gospel`, focused purely on verse reference lookup with no tract output, no file writing, and no PDF generation.
+A C++ command-line tool for looking up Bible verses and outputting them to stdout or esv.org via a browser. You can output a day's reading plan from 3 different plans.
 
 ## Building
 
