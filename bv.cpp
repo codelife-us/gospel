@@ -51,7 +51,7 @@ using namespace std;
 #define HOME_ENV "HOME"
 #endif
 
-const string VERSION = "1.0";
+const string VERSION = "1.1";
 const string CONFIG_FILE = ".gospel";
 
 map<string, string> loadConfig() {
@@ -221,6 +221,27 @@ string formatCitation(const string& verseText, const string& reference, const st
     return formatted;
 }
 
+string toEsvUrl(const string& ref) {
+    string encoded;
+    for (char c : ref) {
+        if (c == ' ')      encoded += "%20";
+        else if (c == ':') encoded += "%3A";
+        else               encoded += c;
+    }
+    return "https://www.esv.org/verses/" + encoded + "/";
+}
+
+void openEsvInBrowser(const string& url) {
+#ifdef _WIN32
+    string cmd = "start \"\" \"" + url + "\"";
+#elif defined(__APPLE__)
+    string cmd = "open \"" + url + "\"";
+#else
+    string cmd = "xdg-open \"" + url + "\"";
+#endif
+    system(cmd.c_str());
+}
+
 void printHelp() {
     cout << "bv v" << VERSION << endl;
     cout << "\nUsage: bv --ref=REF [OPTIONS]" << endl;
@@ -237,6 +258,7 @@ void printHelp() {
     cout << "  --italic                Italicize verse text" << endl;
     cout << "  --versequotes           Wrap each verse in curly quotes" << endl;
     cout << "  --chapterheader, -ch    Print book and chapter as a header for full chapters" << endl;
+    cout << "  -esv, --openesv         Open reference on esv.org in the browser" << endl;
     cout << "\nConfig file (.gospel in current directory):" << endl;
     cout << "  --saveconfig            Save current settings to .gospel as new defaults" << endl;
     cout << "  --showconfig            Print current effective settings and exit" << endl;
@@ -268,6 +290,7 @@ int main(int argc, char* argv[]) {
     bool chapterHeader = false;
     bool saveConfig    = false;
     bool showConfig    = false;
+    bool openEsv       = false;
 
     for (int i = 1; i < argc; ++i) {
         string arg = argv[i];
@@ -297,6 +320,8 @@ int main(int argc, char* argv[]) {
             saveConfig = true;
         } else if (arg == "--showconfig") {
             showConfig = true;
+        } else if (arg == "--openesv" || arg == "-esv") {
+            openEsv = true;
         } else if (arg.find("-") == 0) {
             cerr << "Error: unknown option '" << arg << "'" << endl;
             cerr << "Run 'bv --help' for usage." << endl;
@@ -410,6 +435,15 @@ int main(int argc, char* argv[]) {
             cout << formatCitation(verseText, token, version, false, refStyle, italic, verseQuotes) << endl << endl;
         } else {
             cerr << "Reference not found: " << token << endl;
+        }
+        if (openEsv) {
+            string url = toEsvUrl(token);
+            cout << "ESV URL: " << url << "\n";
+            cout << "Open esv.org now? [Y/n]: ";
+            string answer;
+            getline(cin, answer);
+            if (answer.empty() || answer[0] == 'y' || answer[0] == 'Y')
+                openEsvInBrowser(url);
         }
     }
 

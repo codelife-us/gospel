@@ -100,6 +100,12 @@ Italicize verse text (useful when piping to markdown):
 ./bv --ref="John 3:16" --italic
 ```
 
+Open the reference on esv.org in the browser (prompts before opening):
+```bash
+./bv --ref="John 3:16" -esv
+./bv --ref="John 3:16" --openesv
+```
+
 ## Citation Styles
 
 Control how the reference appears after the verse text with `--refstyle=`:
