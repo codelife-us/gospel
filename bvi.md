@@ -1,12 +1,12 @@
 # bvi
 
-A C++ program that renders a Bible verse reference to a JPEG image with auto-fitted text. The verse fills the image at the largest font size that fits, centered on the canvas, with a citation line at the bottom.
+A C++ program that renders a Bible verse reference to a JPEG image with auto-fitted text. The verse is centered on the canvas with a citation line below.
 
 ## Features
 
 - Auto-sizes font to fill the image — longer passages use a smaller font, short verses use a larger one
 - Text centered horizontally and vertically on the canvas
-- Citation line at the bottom (e.g. `— John 3:16 (KJV)`)
+- Citation line with configurable style, placement, and size
 - Support for multiple Bible translations:
   - **KJV** (King James Version) — default
   - **BSB** (Berean Standard Bible)
@@ -16,7 +16,11 @@ A C++ program that renders a Bible verse reference to a JPEG image with auto-fit
 - Configurable colors for background, verse text, and citation
 - Photo background support with adjustable dimming for text readability
 - Optional curly quotation marks around the verse text
-- Configurable citation font size (or auto-scaled based on image height)
+- Citation style: em-dash prefix, parentheses-wrapped, or plain (`--citestyle`)
+- Citation placement: fixed at bottom edge or attached just below verse text (`--citeplacement`)
+- Citation font size: absolute (`--citesize`) or relative to auto (`--citescale`)
+- Option to omit the Bible version from the citation (`--citebibleversion=no`)
+- Verse text size override: cap at an absolute point size (`--textsize`) or scale relative to the auto-fit (`--textscale`)
 - Custom font support
 - Config file (`.bvi`) stores per-folder defaults for version, size, colors, and style
 - Default output filename derived from the reference (e.g. `John_3_16.jpg`)
@@ -107,13 +111,82 @@ Add curly `"` `"` quotation marks around the verse text:
 ./bvi "John 3:16" --no-quotes   # explicitly off (default)
 ```
 
-## Citation Size
+## Citation
 
-By default the citation point size is auto-scaled based on image height (~30pt at 1080p). Override with a fixed size:
+### Style
+
+Control the format of the citation line with `--citestyle`:
+
+| Value | Output |
+|---|---|
+| `dash` (default) | `— Philippians 4:6-7 (KJV)` |
+| `parens` | `(Philippians 4:6-7, KJV)` |
+| `plain` | `Philippians 4:6-7 (KJV)` |
+
+```bash
+./bvi "John 3:16" --citestyle=parens
+./bvi "John 3:16" --citestyle=plain
+```
+
+Use `--citebibleversion=no` (or `false`) to omit the Bible version entirely:
+
+| With version (default) | Without version |
+|---|---|
+| `— John 3:16 (KJV)` | `— John 3:16` |
+| `(John 3:16, KJV)` | `(John 3:16)` |
+| `John 3:16 (KJV)` | `John 3:16` |
+
+```bash
+./bvi "John 3:16" --citebibleversion=no
+./bvi "John 3:16" --citestyle=plain --citebibleversion=no
+```
+
+### Placement
+
+Control where the citation appears with `--citeplacement`:
+
+- `bottom` (default) — fixed near the bottom edge of the image
+- `below` — positioned just underneath the verse text block
+
+```bash
+./bvi "John 3:16" --citeplacement=below
+./bvi "John 3:16" --citeplacement=below --citestyle=plain
+```
+
+### Size
+
+By default the citation point size is auto-scaled based on image height (~30pt at 1080p). Use one of these options to change it — they cannot be combined.
+
+**`--citescale=PCT`** — scale the auto-calculated size by a percentage:
+
+```bash
+./bvi "John 3:16" --citescale=75    # ~75% of auto size
+./bvi "John 3:16" --citescale=150   # larger than default
+```
+
+**`--citesize=N`** — set an absolute point size:
 
 ```bash
 ./bvi "John 3:16" --citesize=40
 ./bvi "John 3:16" --width=1080 --height=1080 --citesize=24
+```
+
+## Verse Text Size
+
+By default the verse text auto-fits to the largest size that fills the canvas. Use one of these options to reduce it — they cannot be combined.
+
+**`--textscale=PCT`** — shrink the text area to a percentage of its default size. The font still auto-fits within the smaller area, so the result is proportionally smaller text:
+
+```bash
+./bvi "John 3:16" --textscale=75    # ~75% of normal size
+./bvi "John 3:16" --textscale=50    # ~half size
+```
+
+**`--textsize=N`** — cap the verse font at a fixed point size. The font auto-fits up to that maximum and won't exceed it:
+
+```bash
+./bvi "John 3:16" --textsize=72
+./bvi "Philippians 4:6-7" --textsize=48
 ```
 
 ## Font
@@ -136,7 +209,8 @@ Run `--saveconfig` to save the current settings as defaults for the current fold
 
 Save current settings as defaults:
 ```bash
-./bvi --bg="#1a1a2e" --textcolor="#e8e8f0" --citecolor="#8888bb" -bv=KJV --quotes --citesize=32 --saveconfig
+./bvi --bg="#1a1a2e" --textcolor="#e8e8f0" --citecolor="#8888bb" \
+      --citestyle=plain --citeplacement=below --textscale=80 --saveconfig
 ```
 
 Show current effective settings:
@@ -147,20 +221,26 @@ Show current effective settings:
 The `.bvi` file is plain text and can be edited by hand:
 ```
 # bvi configuration
-bv        = KJV
-width     = 1920
-height    = 1080
-font      = /System/Library/Fonts/Palatino.ttc
-bg        = #1a1a2e
-bgphoto   = /path/to/photo.jpg
-dim       = 50
-textcolor = #e8e8f0
-citecolor = #8888bb
-quotes    = yes
-citesize  = 32
+bv               = KJV
+width            = 1920
+height           = 1080
+font             = /System/Library/Fonts/Palatino.ttc
+bg               = #1a1a2e
+bgphoto          = /path/to/photo.jpg
+dim              = 50
+textcolor        = #e8e8f0
+citecolor        = #8888bb
+quotes           = yes
+citesize         = 0
+citescale        = 100
+citestyle        = dash
+citeplacement    = bottom
+citebibleversion = yes
+textsize         = 0
+textscale        = 100
 ```
 
-Supported keys: `bv`, `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `citecolor`, `quotes`, `citesize`
+Supported keys: `bv`, `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `citecolor`, `quotes`, `citesize`, `citescale`, `citestyle`, `citeplacement`, `citebibleversion`, `textsize`, `textscale`
 
 ## Bible Translations
 

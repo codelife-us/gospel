@@ -208,11 +208,17 @@ void printHelp() {
     cout << "  --citecolor=COLOR       Citation text color (default: gray60)\n";
     cout << "  --quotes                Wrap verse text in \xe2\x80\x9c\xe2\x80\x9d quotation marks\n";
     cout << "  --no-quotes             Remove quotation marks (default)\n";
-    cout << "  --citesize=N            Citation font size in points (default: auto ~30pt at 1080p)\n\n";
+    cout << "  --citesize=N            Citation font size in points (default: auto ~30pt at 1080p)\n";
+    cout << "  --citescale=PCT         Scale citation size to PCT% of auto (e.g. 75); cannot combine with --citesize\n";
+    cout << "  --citestyle=STYLE       dash (default): \xe2\x80\x94 Ref (Ver)  |  parens: (Ref, Ver)  |  plain: Ref (Ver)\n";
+    cout << "  --citeplacement=WHERE   bottom (default): near bottom edge  |  below: just under verse text\n";
+    cout << "  --citebibleversion=VAL  yes (default): include Bible version in citation  |  no/false: omit it\n";
+    cout << "  --textsize=N            Cap verse font at N points (absolute; cannot combine with --textscale)\n";
+    cout << "  --textscale=PCT         Scale verse text area to PCT% of default (e.g. 75); cannot combine with --textsize\n\n";
     cout << "Config file (.bvi in current directory):\n";
     cout << "  --saveconfig            Save current settings to .bvi as new defaults\n";
     cout << "  --showconfig            Print current effective settings and exit\n\n";
-    cout << "  Supported keys in .bvi:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  quotes  citesize\n\n";
+    cout << "  Supported keys in .bvi:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  textsize  textscale\n\n";
     cout << "Requires:\n";
     cout << "  ImageMagick  —  brew install imagemagick\n\n";
     cout << "Examples:\n";
@@ -254,7 +260,14 @@ int main(int argc, char* argv[]) {
     string textColor  = cfgGet(cfg, "textcolor",      "white");
     string citeColor  = cfgGet(cfg, "citecolor",      "gray60");
     bool quotes       = cfgGet(cfg, "quotes",         "no") == "yes";
-    int citeSizeOvr   = stoi(cfgGet(cfg, "citesize",  "0")); // 0 = auto
+    int citeSizeOvr      = stoi(cfgGet(cfg, "citesize",      "0"));      // 0 = auto
+    int citeScalePct     = stoi(cfgGet(cfg, "citescale",     "100"));    // 100 = auto base
+    string citeStyle     = cfgGet(cfg, "citestyle",     "dash");         // dash | parens | plain
+    string citePlacement = cfgGet(cfg, "citeplacement", "bottom");       // bottom | below
+    bool citeBibleVersion = (cfgGet(cfg, "citebibleversion", "yes") != "no" &&
+                             cfgGet(cfg, "citebibleversion", "yes") != "false");
+    int textSizeOvr      = stoi(cfgGet(cfg, "textsize",      "0"));      // 0 = off (no cap)
+    int textScalePct     = stoi(cfgGet(cfg, "textscale",     "100"));    // 100 = fill canvas
 
     bool saveConfig  = false;
     bool showConfig  = false;
@@ -296,6 +309,19 @@ int main(int argc, char* argv[]) {
             quotes = false;
         } else if (arg.find("--citesize=") == 0) {
             citeSizeOvr = stoi(arg.substr(11));
+        } else if (arg.find("--citescale=") == 0) {
+            citeScalePct = stoi(arg.substr(12));
+        } else if (arg.find("--citestyle=") == 0) {
+            citeStyle = arg.substr(12);
+        } else if (arg.find("--citeplacement=") == 0) {
+            citePlacement = arg.substr(16);
+        } else if (arg.find("--citebibleversion=") == 0) {
+            string val = arg.substr(19);
+            citeBibleVersion = (val != "no" && val != "false");
+        } else if (arg.find("--textsize=") == 0) {
+            textSizeOvr = stoi(arg.substr(11));
+        } else if (arg.find("--textscale=") == 0) {
+            textScalePct = stoi(arg.substr(12));
         } else if (arg == "--saveconfig") {
             saveConfig = true;
         } else if (arg == "--showconfig") {
@@ -313,20 +339,43 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (textSizeOvr > 0 && textScalePct != 100) {
+        cerr << "Error: --textsize and --textscale cannot be used together.\n";
+        return 1;
+    }
+    if (citeSizeOvr > 0 && citeScalePct != 100) {
+        cerr << "Error: --citesize and --citescale cannot be used together.\n";
+        return 1;
+    }
+    if (citeStyle != "dash" && citeStyle != "parens" && citeStyle != "plain") {
+        cerr << "Error: --citestyle must be dash, parens, or plain.\n";
+        return 1;
+    }
+    if (citePlacement != "bottom" && citePlacement != "below") {
+        cerr << "Error: --citeplacement must be bottom or below.\n";
+        return 1;
+    }
+
     // ── --showconfig: print effective settings and exit ───────────────────
     if (showConfig) {
         cout << "Effective settings (config file + command-line):\n";
-        cout << "  bv         = " << version   << "\n";
-        cout << "  width      = " << imgWidth  << "\n";
-        cout << "  height     = " << imgHeight << "\n";
-        cout << "  font       = " << font      << "\n";
-        cout << "  bg         = " << bgColor   << "\n";
-        cout << "  bgphoto    = " << (bgPhoto.empty() ? "(none)" : bgPhoto) << "\n";
-        cout << "  dim        = " << dimPct    << "\n";
-        cout << "  textcolor  = " << textColor << "\n";
-        cout << "  citecolor  = " << citeColor << "\n";
-        cout << "  quotes     = " << (quotes ? "yes" : "no") << "\n";
-        cout << "  citesize   = " << (citeSizeOvr > 0 ? to_string(citeSizeOvr) : "auto") << "\n";
+        cout << "  bv               = " << version   << "\n";
+        cout << "  width            = " << imgWidth  << "\n";
+        cout << "  height           = " << imgHeight << "\n";
+        cout << "  font             = " << font      << "\n";
+        cout << "  bg               = " << bgColor   << "\n";
+        cout << "  bgphoto          = " << (bgPhoto.empty() ? "(none)" : bgPhoto) << "\n";
+        cout << "  dim              = " << dimPct    << "\n";
+        cout << "  textcolor        = " << textColor << "\n";
+        cout << "  citecolor        = " << citeColor << "\n";
+        cout << "  quotes           = " << (quotes ? "yes" : "no") << "\n";
+        cout << "  citesize         = " << (citeSizeOvr > 0 ? to_string(citeSizeOvr) : "auto") << "\n";
+        cout << "  citescale        = " << citeScalePct << "%\n";
+        cout << "  citestyle        = " << citeStyle     << "\n";
+        cout << "  citeplacement    = " << citePlacement << "\n";
+        cout << "  citebibleversion = " << (citeBibleVersion ? "yes" : "no") << "\n";
+        cout << "  textsize         = " << (textSizeOvr > 0 ? to_string(textSizeOvr) : "off") << "\n";
+        cout << "  textscale        = " << textScalePct << "%\n";
         ifstream check(CONFIG_FILE);
         if (check.good())
             cout << "\nConfig file: ./" << CONFIG_FILE << " (loaded)\n";
@@ -343,17 +392,23 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         f << "# bvi configuration — generated by bvi --saveconfig\n";
-        f << "bv        = " << version   << "\n";
-        f << "width     = " << imgWidth  << "\n";
-        f << "height    = " << imgHeight << "\n";
-        f << "font      = " << font      << "\n";
-        f << "bg        = " << bgColor   << "\n";
-        f << "bgphoto   = " << bgPhoto   << "\n";
-        f << "dim       = " << dimPct    << "\n";
-        f << "textcolor = " << textColor << "\n";
-        f << "citecolor = " << citeColor << "\n";
-        f << "quotes    = " << (quotes ? "yes" : "no") << "\n";
-        f << "citesize  = " << citeSizeOvr << "\n";
+        f << "bv               = " << version   << "\n";
+        f << "width            = " << imgWidth  << "\n";
+        f << "height           = " << imgHeight << "\n";
+        f << "font             = " << font      << "\n";
+        f << "bg               = " << bgColor   << "\n";
+        f << "bgphoto          = " << bgPhoto   << "\n";
+        f << "dim              = " << dimPct    << "\n";
+        f << "textcolor        = " << textColor << "\n";
+        f << "citecolor        = " << citeColor << "\n";
+        f << "quotes           = " << (quotes ? "yes" : "no") << "\n";
+        f << "citesize         = " << citeSizeOvr   << "\n";
+        f << "citescale        = " << citeScalePct  << "\n";
+        f << "citestyle        = " << citeStyle     << "\n";
+        f << "citeplacement    = " << citePlacement << "\n";
+        f << "citebibleversion = " << (citeBibleVersion ? "yes" : "no") << "\n";
+        f << "textsize         = " << textSizeOvr   << "\n";
+        f << "textscale        = " << textScalePct  << "\n";
         cerr << "Saved defaults to ./" << CONFIG_FILE << "\n";
         return 0;
     }
@@ -432,8 +487,15 @@ int main(int argc, char* argv[]) {
     if (quotes)
         verseText = "\xe2\x80\x9c" + verseText + "\xe2\x80\x9d";
 
-    // Citation line, e.g. "— Philippians 4:6-7 (KJV)"
-    string citation = "\xe2\x80\x94 " + reference + " (" + version + ")";
+    // Citation line — format depends on --citestyle and --citebibleversion
+    string citation;
+    string ver = citeBibleVersion ? " (" + version + ")" : "";
+    if (citeStyle == "parens")
+        citation = citeBibleVersion ? "(" + reference + ", " + version + ")" : "(" + reference + ")";
+    else if (citeStyle == "plain")
+        citation = reference + ver;
+    else // dash (default)
+        citation = "\xe2\x80\x94 " + reference + ver;
 
     string quotedVerse    = shellQuote(verseText);
     string quotedCitation = shellQuote(citation);
@@ -445,13 +507,13 @@ int main(int argc, char* argv[]) {
     // Verse text area: ~100px margin each side, and enough height to let
     // caption: auto-fit the font. The layer is trimmed after generation so
     // the actual text block (not the full canvas) is centered on the image.
-    int verseW    = (int)(imgWidth  * 0.896);   // ~1720px at 1920 wide
-    int verseH    = (int)(imgHeight * 0.741);   // ~800px at 1080 tall — caption auto-fits within this
+    int verseW    = (int)(imgWidth  * 0.896 * textScalePct / 100.0);   // ~1720px at 1920 wide
+    int verseH    = (int)(imgHeight * 0.741 * textScalePct / 100.0);  // ~800px at 1080 tall — caption auto-fits within this
     // Shift the trimmed verse block slightly above center so the citation fits below.
     int verseOffY = (int)(40 * scale);          // pixels above image center
 
     // Citation: fixed point size, placed near the bottom edge.
-    int citePt    = (citeSizeOvr > 0) ? citeSizeOvr : max(20, (int)(30 * scale)); // ~30pt at 1080p
+    int citePt    = (citeSizeOvr > 0) ? citeSizeOvr : max(1, (int)(30 * scale * citeScalePct / 100.0)); // ~30pt at 1080p
     int citeOffY  = max(20, (int)(55 * scale)); // pixels inward from bottom edge
 
     // Temp file for the intermediate verse layer PNG.
@@ -487,6 +549,7 @@ int main(int argc, char* argv[]) {
          << " -font \""       << font << "\""
          << " -gravity Center"                        // center-align each text line
          << " -size "         << verseW << "x" << verseH
+         << (textSizeOvr > 0 ? " -pointsize " + to_string(textSizeOvr) : "")
          << " caption:"      << quotedVerse
          << " -trim"                                  // crop to actual text bounds
          << " -bordercolor \"" << layerBg << "\""     // restore padding around text
@@ -502,11 +565,41 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // ── Citation annotation fragment ──────────────────────────────────────
+    //
+    // For "below" placement, query the trimmed layer height so the citation
+    // can be positioned just underneath the verse text block.
+    ostringstream citeAnnot;
+    citeAnnot << " -fill \""    << citeColor << "\""
+              << " -font \""    << font      << "\""
+              << " -pointsize " << citePt;
+
+    if (citePlacement == "below") {
+        int layerH = 0;
+        string identCmd = im + " identify -format \"%h\" \"" + tmpLayer + "\"";
+        FILE* pipe = popen(identCmd.c_str(), "r");
+        if (pipe) {
+            char buf[32] = {};
+            fgets(buf, sizeof(buf), pipe);
+            pclose(pipe);
+            layerH = atoi(buf);
+        }
+        int citeGap = max(5, (int)(12 * scale));
+        int offset  = -verseOffY + layerH / 2 + citeGap;
+        citeAnnot << " -gravity Center"
+                  << (offset >= 0 ? " -annotate +0+" : " -annotate +0-")
+                  << abs(offset);
+    } else {
+        citeAnnot << " -gravity South"
+                  << " -annotate +0+" << citeOffY;
+    }
+    citeAnnot << " " << quotedCitation;
+
     // ── Step 2: Composite verse layer + annotate citation ─────────────────
     //
     // The trimmed verse layer is centered on the canvas (shifted slightly
-    // above center to leave room for the citation). The citation is drawn
-    // with -annotate at a fixed point size near the bottom edge.
+    // above center to leave room for the citation at the bottom, or placed
+    // inline when --citeplacement=below).
     ostringstream cmd2;
     if (bgPhoto.empty()) {
         cmd2 << im
@@ -516,12 +609,7 @@ int main(int argc, char* argv[]) {
              << " -gravity Center"
              << " -geometry +0-" << verseOffY
              << " -composite"
-             << " -fill \"" << citeColor << "\""
-             << " -font \"" << font << "\""
-             << " -pointsize " << citePt
-             << " -gravity South"
-             << " -annotate +0+" << citeOffY
-             << " " << quotedCitation
+             << citeAnnot.str()
              << " \"" << outputFile << "\"";
     } else {
         // Load photo, resize to fill canvas, crop to exact size, then dim.
@@ -536,12 +624,7 @@ int main(int argc, char* argv[]) {
              << " -gravity Center"
              << " -geometry +0-" << verseOffY
              << " -composite"
-             << " -fill \"" << citeColor << "\""
-             << " -font \"" << font << "\""
-             << " -pointsize " << citePt
-             << " -gravity South"
-             << " -annotate +0+" << citeOffY
-             << " " << quotedCitation
+             << citeAnnot.str()
              << " \"" << outputFile << "\"";
     }
 
