@@ -16,7 +16,7 @@ A C++ program that renders a Bible verse reference to a JPEG image with auto-fit
 - Configurable colors for background, verse text, and citation
 - Photo background support with adjustable dimming for text readability
 - Optional curly quotation marks around the verse text
-- Citation style: em-dash prefix, parentheses-wrapped, or plain (`--citestyle`)
+- Citation style: em-dash prefix, parentheses-wrapped, plain, or omitted (`--citestyle`)
 - Citation placement: fixed at bottom edge or attached just below verse text (`--citeplacement`)
 - Citation font size: absolute (`--citesize`) or relative to auto (`--citescale`)
 - Option to omit the Bible version from the citation (`--citebibleversion=no`)
@@ -122,10 +122,12 @@ Control the format of the citation line with `--citestyle`:
 | `dash` (default) | `— Philippians 4:6-7 (KJV)` |
 | `parens` | `(Philippians 4:6-7, KJV)` |
 | `plain` | `Philippians 4:6-7 (KJV)` |
+| `none` | _(no citation)_ |
 
 ```bash
 ./bvi "John 3:16" --citestyle=parens
 ./bvi "John 3:16" --citestyle=plain
+./bvi "John 3:16" --citestyle=none
 ```
 
 Use `--citebibleversion=no` (or `false`) to omit the Bible version entirely:

@@ -210,7 +210,7 @@ void printHelp() {
     cout << "  --no-quotes             Remove quotation marks (default)\n";
     cout << "  --citesize=N            Citation font size in points (default: auto ~30pt at 1080p)\n";
     cout << "  --citescale=PCT         Scale citation size to PCT% of auto (e.g. 75); cannot combine with --citesize\n";
-    cout << "  --citestyle=STYLE       dash (default): \xe2\x80\x94 Ref (Ver)  |  parens: (Ref, Ver)  |  plain: Ref (Ver)\n";
+    cout << "  --citestyle=STYLE       dash (default): \xe2\x80\x94 Ref (Ver)  |  parens: (Ref, Ver)  |  plain: Ref (Ver)  |  none: omit citation\n";
     cout << "  --citeplacement=WHERE   bottom (default): near bottom edge  |  below: just under verse text\n";
     cout << "  --citebibleversion=VAL  yes (default): include Bible version in citation  |  no/false: omit it\n";
     cout << "  --textsize=N            Cap verse font at N points (absolute; cannot combine with --textscale)\n";
@@ -347,7 +347,7 @@ int main(int argc, char* argv[]) {
         cerr << "Error: --citesize and --citescale cannot be used together.\n";
         return 1;
     }
-    if (citeStyle != "dash" && citeStyle != "parens" && citeStyle != "plain") {
+    if (citeStyle != "dash" && citeStyle != "parens" && citeStyle != "plain" && citeStyle != "none") {
         cerr << "Error: --citestyle must be dash, parens, or plain.\n";
         return 1;
     }
@@ -510,7 +510,7 @@ int main(int argc, char* argv[]) {
     int verseW    = (int)(imgWidth  * 0.896 * textScalePct / 100.0);   // ~1720px at 1920 wide
     int verseH    = (int)(imgHeight * 0.741 * textScalePct / 100.0);  // ~800px at 1080 tall — caption auto-fits within this
     // Shift the trimmed verse block slightly above center so the citation fits below.
-    int verseOffY = (int)(40 * scale);          // pixels above image center
+    int verseOffY = (citeStyle == "none") ? 0 : (int)(40 * scale);  // pixels above image center
 
     // Citation: fixed point size, placed near the bottom edge.
     int citePt    = (citeSizeOvr > 0) ? citeSizeOvr : max(1, (int)(30 * scale * citeScalePct / 100.0)); // ~30pt at 1080p
@@ -570,30 +570,32 @@ int main(int argc, char* argv[]) {
     // For "below" placement, query the trimmed layer height so the citation
     // can be positioned just underneath the verse text block.
     ostringstream citeAnnot;
-    citeAnnot << " -fill \""    << citeColor << "\""
-              << " -font \""    << font      << "\""
-              << " -pointsize " << citePt;
+    if (citeStyle != "none") {
+        citeAnnot << " -fill \""    << citeColor << "\""
+                  << " -font \""    << font      << "\""
+                  << " -pointsize " << citePt;
 
-    if (citePlacement == "below") {
-        int layerH = 0;
-        string identCmd = im + " identify -format \"%h\" \"" + tmpLayer + "\"";
-        FILE* pipe = popen(identCmd.c_str(), "r");
-        if (pipe) {
-            char buf[32] = {};
-            fgets(buf, sizeof(buf), pipe);
-            pclose(pipe);
-            layerH = atoi(buf);
+        if (citePlacement == "below") {
+            int layerH = 0;
+            string identCmd = im + " identify -format \"%h\" \"" + tmpLayer + "\"";
+            FILE* pipe = popen(identCmd.c_str(), "r");
+            if (pipe) {
+                char buf[32] = {};
+                fgets(buf, sizeof(buf), pipe);
+                pclose(pipe);
+                layerH = atoi(buf);
+            }
+            int citeGap = max(5, (int)(12 * scale));
+            int offset  = -verseOffY + layerH / 2 + citeGap;
+            citeAnnot << " -gravity Center"
+                      << (offset >= 0 ? " -annotate +0+" : " -annotate +0-")
+                      << abs(offset);
+        } else {
+            citeAnnot << " -gravity South"
+                      << " -annotate +0+" << citeOffY;
         }
-        int citeGap = max(5, (int)(12 * scale));
-        int offset  = -verseOffY + layerH / 2 + citeGap;
-        citeAnnot << " -gravity Center"
-                  << (offset >= 0 ? " -annotate +0+" : " -annotate +0-")
-                  << abs(offset);
-    } else {
-        citeAnnot << " -gravity South"
-                  << " -annotate +0+" << citeOffY;
+        citeAnnot << " " << quotedCitation;
     }
-    citeAnnot << " " << quotedCitation;
 
     // ── Step 2: Composite verse layer + annotate citation ─────────────────
     //
