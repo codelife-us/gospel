@@ -211,17 +211,21 @@ static int browseList(const string& header, const vector<string>& items, int& se
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
-    string version = "KJV";
+    string version   = "KJV";
+    bool   copyVerse = false;
 
     for (int i = 1; i < argc; ++i) {
         string arg = argv[i];
         if      (arg.find("-bv=") == 0)            version = arg.substr(4);
         else if (arg.find("--bibleversion=") == 0) version = arg.substr(15);
+        else if (arg == "--verse" || arg == "-v")  copyVerse = true;
         else if (arg == "-h" || arg == "--help") {
             cout << "versepick — interactive Bible verse browser\n\n"
-                 << "Usage: versepick [-bv=KJV|BSB|WEB]\n\n"
+                 << "Usage: versepick [-bv=KJV|BSB|WEB] [--verse|-v]\n\n"
                  << "Browse by book, chapter, and verse using arrow keys.\n"
-                 << "Pressing Enter on a verse copies its reference to the clipboard.\n";
+                 << "Pressing Enter on a verse copies its reference to the clipboard.\n"
+                 << "\n"
+                 << "  --verse, -v   Copy verse text instead of reference\n";
             return 0;
         }
     }
@@ -320,14 +324,16 @@ int main(int argc, char* argv[]) {
             if (r == -2) break;
             if (r == -1) { state = 1; }
             else {
-                int    verse = vs[r];
-                string ref   = bc + ":" + to_string(verse);
-                copyToClipboard(ref);
+                int    verse   = vs[r];
+                string ref     = bc + ":" + to_string(verse);
+                string text    = gText.count(ref) ? gText[ref] : "";
+                string payload = copyVerse ? text : ref;
+                copyToClipboard(payload);
 
                 clrscr();
                 cout << "\033[1mCopied to clipboard:\033[0m\n\n"
-                     << "  " << ref << "\n\n"
-                     << "\033[2m" << gText[ref] << "\033[0m\n\n"
+                     << "  " << (copyVerse ? text : ref) << "\n\n"
+                     << (copyVerse ? "" : "\033[2m" + text + "\033[0m\n\n")
                      << "Press any key to browse more, or q to quit.\n";
                 cout.flush();
 

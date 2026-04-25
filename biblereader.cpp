@@ -159,14 +159,14 @@ with http.server.HTTPServer(('127.0.0.1', PORT), Handler) as httpd:
 static string makeBibleJS() {
     ostringstream js;
 
-    js << "const BOOKS=[";
+    js << "const _INIT_BOOKS=[";
     for (size_t i = 0; i < gBooks.size(); ++i) {
         if (i) js << ",";
         js << "\"" << jsEsc(gBooks[i]) << "\"";
     }
     js << "];\n";
 
-    js << "const BIBLE={";
+    js << "const _INIT_BIBLE={";
     for (size_t bi = 0; bi < gBooks.size(); ++bi) {
         const string& book = gBooks[bi];
         if (bi) js << ",";
@@ -193,7 +193,7 @@ static string makeBibleJS() {
     return js.str();
 }
 
-static string makeHtml(const string& version) {
+static string makeHtml(const string& version, bool copyVerse, const vector<string>& available) {
     ostringstream html;
 
     html << R"html(<!DOCTYPE html>
@@ -276,6 +276,13 @@ sup.vn{font-size:10px;color:var(--vn);margin-right:2px;margin-left:3px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 #bar-hint{font-size:11px;color:var(--dim);white-space:nowrap}
 #bar-ok{color:#3fb950;font-size:12px;opacity:0;transition:opacity .3s;white-space:nowrap}
+#ver-sel{display:flex;gap:4px;flex-shrink:0}
+.ver-btn{background:none;border:1px solid var(--border);color:var(--dim);border-radius:5px;
+  padding:4px 9px;font-size:12px;cursor:pointer;font-weight:500}
+.ver-btn:hover{border-color:var(--accent);color:var(--text)}
+.ver-btn.active{background:var(--accent);border-color:var(--accent);color:#0d1117}
+#loading{display:none;position:fixed;inset:0;background:rgba(13,17,23,.75);
+  z-index:100;align-items:center;justify-content:center;font-size:14px;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -285,7 +292,9 @@ sup.vn{font-size:10px;color:var(--vn);margin-right:2px;margin-left:3px;
   <div id="hdr-ver">)html" << htmlEsc(version) << R"html(</div>
   <input id="search" type="text" placeholder="Search verses&#x2026;" oninput="onSearch()" spellcheck="false">
   <button id="search-clear" onclick="clearSearch()">&#x2715;</button>
+  <div id="ver-sel"></div>
 </div>
+<div id="loading">Loading&#x2026;</div>
 
 <div id="body">
   <div id="sidebar"></div>
@@ -302,12 +311,25 @@ sup.vn{font-size:10px;color:var(--vn);margin-right:2px;margin-left:3px;
 
 <div id="bar">
   <div id="bar-ref">Click a verse to select it</div>
-  <div id="bar-hint">reference copied to clipboard</div>
+  <div id="bar-hint"></div>
   <div id="bar-ok">&#x2713; copied</div>
 </div>
 
 <script>
-)html" << makeBibleJS() << R"html(
+)html" << makeBibleJS()
+      << "const INIT_VER=\"" << jsEsc(version) << "\";\n"
+      << [&]() {
+             string s = "const AVAIL_VERS=[";
+             for (size_t i = 0; i < available.size(); ++i) {
+                 if (i) s += ",";
+                 s += "\"" + available[i] + "\"";
+             }
+             return s + "];\n";
+         }()
+      << "const COPY_VERSE=" << (copyVerse ? "true" : "false") << ";\n"
+      << "let BOOKS=_INIT_BOOKS,BIBLE=_INIT_BIBLE,currentVer=INIT_VER;\n"
+         "const _verCache={[INIT_VER]:{books:_INIT_BOOKS,bible:_INIT_BIBLE}};\n"
+      << R"html(
 
 // ── state ──────────────────────────────────────────────────────────────────
 let curBook = null, curCh = null;
@@ -439,14 +461,17 @@ function navChapter(dir) {
 function pickVerse(el) {
     document.querySelectorAll('.verse.sel').forEach(e => e.classList.remove('sel'));
     el.classList.add('sel');
-    const ref = el.dataset.ref;
-    document.getElementById('bar-ref').textContent = ref;
-    navigator.clipboard.writeText(ref).then(() => {
+    const ref     = el.dataset.ref;
+    const verseText = el.innerText.replace(/^\d+\s*/, '').trim();
+    const payload = COPY_VERSE ? verseText : ref;
+    document.getElementById('bar-ref').textContent  = ref;
+    document.getElementById('bar-hint').textContent = COPY_VERSE ? 'verse text copied' : 'reference copied to clipboard';
+    navigator.clipboard.writeText(payload).then(() => {
         const ok = document.getElementById('bar-ok');
         ok.style.opacity = 1;
         setTimeout(() => ok.style.opacity = 0, 1500);
     }).catch(()=>{});
-    fetch('/pick?ref=' + encodeURIComponent(ref)).catch(()=>{});
+    fetch('/pick?ref=' + encodeURIComponent(payload)).catch(()=>{});
 }
 
 // ── search ─────────────────────────────────────────────────────────────────
@@ -530,7 +555,71 @@ document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight' || (e.key === 'ArrowDown'  && e.altKey)) navChapter(1);
 });
 
+// ── version switching ──────────────────────────────────────────────────────
+function buildVerSelector() {
+    if (AVAIL_VERS.length < 2) return;
+    const div = document.getElementById('ver-sel');
+    AVAIL_VERS.forEach(ver => {
+        const btn = document.createElement('button');
+        btn.className = 'ver-btn' + (ver === currentVer ? ' active' : '');
+        btn.textContent = ver;
+        btn.addEventListener('click', () => switchVersion(ver));
+        div.appendChild(btn);
+    });
+}
+
+function parseBible(text) {
+    const books = [], bible = {};
+    const seen = new Set();
+    for (const line of text.split('\n')) {
+        const tab = line.indexOf('\t');
+        if (tab < 0) continue;
+        const ref   = line.substring(0, tab);
+        const vtext = line.substring(tab + 1).replace(/\r$/, '');
+        const col = ref.lastIndexOf(':');
+        if (col < 0) continue;
+        const bc = ref.substring(0, col);
+        const v  = parseInt(ref.substring(col + 1));
+        if (isNaN(v)) continue;
+        const sp = bc.lastIndexOf(' ');
+        if (sp < 0) continue;
+        const book = bc.substring(0, sp);
+        const ch   = parseInt(bc.substring(sp + 1));
+        if (isNaN(ch)) continue;
+        if (!seen.has(book)) { seen.add(book); books.push(book); bible[book] = {}; }
+        if (!bible[book][ch]) bible[book][ch] = {};
+        bible[book][ch][v] = vtext;
+    }
+    return { books, bible };
+}
+
+async function switchVersion(ver) {
+    if (ver === currentVer) return;
+    if (_verCache[ver]) { applyVersion(ver, _verCache[ver].books, _verCache[ver].bible); return; }
+    const ld = document.getElementById('loading');
+    ld.style.display = 'flex';
+    try {
+        const r = await fetch('/Bible' + ver + '.txt');
+        if (!r.ok) throw new Error();
+        const { books, bible } = parseBible(await r.text());
+        _verCache[ver] = { books, bible };
+        applyVersion(ver, books, bible);
+    } catch(e) { alert('Could not load ' + ver + ' Bible.'); }
+    finally    { ld.style.display = 'none'; }
+}
+
+function applyVersion(ver, books, bible) {
+    BOOKS = books; BIBLE = bible; currentVer = ver;
+    document.getElementById('hdr-ver').textContent = ver;
+    document.getElementById('sidebar').innerHTML = '';
+    buildSidebar();
+    document.querySelectorAll('.ver-btn').forEach(b => b.classList.toggle('active', b.textContent === ver));
+    if (curBook && BIBLE[curBook] && BIBLE[curBook][curCh]) showChapter(curBook, curCh);
+    else showChapter(BOOKS[0], 1);
+}
+
 // ── init ───────────────────────────────────────────────────────────────────
+buildVerSelector();
 buildSidebar();
 showChapter(BOOKS[0], 1);
 </script>
@@ -544,20 +633,22 @@ showChapter(BOOKS[0], 1);
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
-    string version = "KJV";
-    int    port    = 7778;
+    string version   = "KJV";
+    int    port      = 7778;
+    bool   copyVerse = false;
 
     for (int i = 1; i < argc; ++i) {
         string arg = argv[i];
         if      (arg.find("-bv=") == 0)            version = arg.substr(4);
         else if (arg.find("--bibleversion=") == 0) version = arg.substr(15);
         else if (arg.find("--port=") == 0)         port    = stoi(arg.substr(7));
+        else if (arg == "--verse" || arg == "-v")  copyVerse = true;
         else if (arg == "-h" || arg == "--help") {
-            cout << "Usage: biblereader [-bv=KJV|BSB|WEB] [--port=7778]\n"
+            cout << "Usage: biblereader [-bv=KJV|BSB|WEB] [--port=7778] [--verse|-v]\n"
                  << "  Opens a browser Bible reader.\n"
                  << "  Click a verse to copy its reference to the clipboard.\n"
-                 << "  Press Enter here to quit; the last selected reference\n"
-                 << "  is printed to stdout (for piping to bvi).\n";
+                 << "  --verse, -v   Copy verse text instead of reference\n"
+                 << "  Press Enter here to quit; the last selection is printed to stdout.\n";
             return 0;
         }
     }
@@ -610,9 +701,43 @@ int main(int argc, char* argv[]) {
     if (!td) { perror("mkdtemp"); return 1; }
     g_tempDir = td;
 
+    // Symlink all available Bible files into temp dir for version switching
+    struct VPair { const char* ver; const char* fname; };
+    const VPair allVers[] = {
+        {"KJV", "BibleKJV.txt"},
+        {"BSB", "BibleBSB.txt"},
+        {"WEB", "BibleWEB.txt"}
+    };
+    auto toAbsolute = [](const string& path) -> string {
+        if (path.empty() || path[0] == '/') return path;
+        char buf[4096];
+        if (getcwd(buf, sizeof(buf))) return string(buf) + "/" + path;
+        return path;
+    };
+    vector<string> available;
+    for (const auto& vp : allVers) {
+        string path;
+        if (string(vp.ver) == version) {
+            path = bibleFile;  // already resolved
+        } else {
+            { ifstream t(vp.fname); if (t.good()) path = vp.fname; }
+            if (path.empty()) {
+                const char* home = getenv(HOME_ENV);
+                if (home) {
+                    string hp = string(home) + "/" + vp.fname;
+                    ifstream t(hp);
+                    if (t.good()) path = hp;
+                }
+            }
+        }
+        if (path.empty()) continue;
+        available.push_back(vp.ver);
+        symlink(toAbsolute(path).c_str(), (g_tempDir + "/" + vp.fname).c_str());
+    }
+
     cerr << "Generating page..." << flush;
-    { ofstream f(g_tempDir + "/server.py");  f << makePythonServer(); }
-    { ofstream f(g_tempDir + "/index.html"); f << makeHtml(version);  }
+    { ofstream f(g_tempDir + "/server.py");  f << makePythonServer();                      }
+    { ofstream f(g_tempDir + "/index.html"); f << makeHtml(version, copyVerse, available); }
     cerr << " done.\n";
 
     // Fork Python server
