@@ -8,6 +8,7 @@ import threading
 import os
 import sys
 import re
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -369,7 +370,8 @@ class BviView:
 
         # Preview size
         tk.Checkbutton(f, text="Preview at half size", variable=self.half_size_var,
-                       command=self._on_half_size_toggle).grid(row=18, column=0, columnspan=4, sticky="w", **pad)
+                       command=self._on_half_size_toggle).grid(row=18, column=0, columnspan=2, sticky="w", **pad)
+        tk.Button(f, text="Save Image…", command=self._save_image).grid(row=18, column=2, columnspan=2, sticky="e", padx=(0, 8), pady=3)
 
         # Status
         tk.Label(f, textvariable=self.status_var, fg="gray45",
@@ -478,6 +480,20 @@ class BviView:
         self._bvilive_state["default_theme"] = name
         save_bvilive_state(self._bvilive_path, self._bvilive_state)
         self._update_theme_dropdown()
+
+    def _save_image(self):
+        if not os.path.exists(TMP_JPG):
+            return
+        ref = self.ref_var.get().strip()
+        default_name = (re.sub(r'[^\w]+', '_', ref).strip('_') + ".jpg") if ref else "bvilive_output.jpg"
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save Image",
+            initialfile=default_name,
+            defaultextension=".jpg",
+            filetypes=[("JPEG", "*.jpg *.jpeg"), ("All files", "*.*")])
+        if path:
+            shutil.copy2(TMP_JPG, path)
 
     def _on_half_size_toggle(self):
         self._bvilive_state["half_size"] = "yes" if self.half_size_var.get() else "no"
