@@ -267,11 +267,14 @@ By default the verse text auto-fits to the largest size that fills the canvas. U
 ./bvi "John 3:16" --textscale=50    # ~half size
 ```
 
-**`--textsize=N`** — cap the verse font at a fixed point size. The font auto-fits up to that maximum and won't exceed it:
+**`--textsize=N`** / **`--maxfontsize=N`** — cap the verse font at a fixed point size. The font auto-fits up to that maximum and won't exceed it. `--maxfontsize` is an alias for `--textsize`.
+
+At 1920×1080, typical auto-fit sizes by verse length: short verses (~50 chars) reach ~250pt; a median Luke verse (~111 chars) auto-fits to ~140pt; long passages (~200+ chars) drop to ~80pt. So **140pt** is a reasonable mid-range cap for typical single-verse use.
 
 ```bash
+./bvi "John 3:16" --maxfontsize=140
+./bvi "Philippians 4:6-7" --maxfontsize=100
 ./bvi "John 3:16" --textsize=72
-./bvi "Philippians 4:6-7" --textsize=48
 ```
 
 ## Font

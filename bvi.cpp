@@ -221,6 +221,7 @@ void printHelp() {
     cout << "  --citeshadow            Add drop shadow behind citation text\n";
     cout << "  --no-citeshadow         Remove citation drop shadow (default)\n";
     cout << "  --textsize=N            Cap verse font at N points (absolute; cannot combine with --textscale)\n";
+    cout << "  --maxfontsize=N         Alias for --textsize (e.g. 140 is mid-range for typical Luke verses at 1080p)\n";
     cout << "  --textscale=PCT         Scale verse text area to PCT% of default (e.g. 75); cannot combine with --textsize\n";
     cout << "  --textpanel=N           Semi-transparent panel behind text, N=opacity 1-100 (default: off)\n";
     cout << "  --textpanelcolor=COLOR  Panel color (default: black); any ImageMagick color\n";
@@ -344,6 +345,8 @@ int main(int argc, char* argv[]) {
             citeShadow = false;
         } else if (arg.find("--textsize=") == 0) {
             textSizeOvr = stoi(arg.substr(11));
+        } else if (arg.find("--maxfontsize=") == 0) {
+            textSizeOvr = stoi(arg.substr(14));
         } else if (arg.find("--textscale=") == 0) {
             textScalePct = stoi(arg.substr(12));
         } else if (arg.find("--textpanel=") == 0) {
@@ -378,7 +381,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (textSizeOvr > 0 && textScalePct != 100) {
-        cerr << "Error: --textsize and --textscale cannot be used together.\n";
+        cerr << "Error: --textsize/--maxfontsize and --textscale cannot be used together.\n";
         return 1;
     }
     if (citeSizeOvr > 0 && citeScalePct != 100) {
