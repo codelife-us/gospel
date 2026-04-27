@@ -21,11 +21,13 @@ A C++ program that renders a Bible verse reference (or custom text) to a JPEG im
 - Citation placement: fixed at bottom edge or attached just below verse text (`--citeplacement`)
 - Citation font size: absolute (`--citesize`) or relative to auto (`--citescale`)
 - Citation font independent from verse font (`--citefont`)
-- Citation drop shadow (`--citeshadow`)
+- Citation drop shadow with adjustable intensity (`--citeshadow[=N]`)
 - Option to omit the Bible version from the citation (`--citebibleversion=no`)
 - Verse text size: force an absolute point size (`--textsize`), cap auto-fit at a maximum (`--maxtextsize`), or scale relative to auto-fit (`--textscale`)
 - Semi-transparent panel behind verse text for readability (`--textpanel`)
-- Drop shadow behind verse text (`--textshadow`)
+- Drop shadow behind verse text with adjustable intensity (`--textshadow[=N]`)
+- Shadow style: soft Gaussian blur or hard offset copy (`--shadowmethod`)
+- Adjustable line spacing (`--linespacing`)
 - Custom font support
 - Config file (`.luminaverse` `[bvi]` section) stores per-folder defaults for version, size, colors, and style
 - Default output filename derived from the reference (e.g. `John_3_16.jpg`)
@@ -165,15 +167,47 @@ A semi-transparent colored rectangle drawn behind the verse text block improves 
 A drop shadow behind the verse text adds depth and separation from the background.
 
 ```bash
-./bvi "John 3:16" --bgphoto=photo.jpg --textshadow
-./bvi "John 3:16" --textshadow --no-textshadow   # explicitly off
+./bvi "John 3:16" --bgphoto=photo.jpg --textshadow       # intensity 5 (default)
+./bvi "John 3:16" --textshadow=3                         # lighter shadow
+./bvi "John 3:16" --textshadow=8                         # heavier shadow
+./bvi "John 3:16" --no-textshadow                        # explicitly off
 ```
+
+The `N` value ranges from 1 (lightest) to 10 (heaviest). The bare `--textshadow` flag uses intensity 5.
 
 Panel and shadow can be combined:
 
 ```bash
 ./bvi "John 3:16" --bgphoto=photo.jpg --textpanel=50 --textshadow
 ```
+
+### Shadow Method
+
+Control the rendering style for both text and citation shadows with `--shadowmethod`:
+
+| Value | Style | Description |
+|---|---|---|
+| `1` (default) | Soft / Gaussian | Black shadow blurred with a Gaussian filter at 80% opacity |
+| `2` | Hard / copy | Solid black offset copy of the text, no blur |
+
+```bash
+./bvi "John 3:16" --textshadow=6 --shadowmethod=1   # soft (default)
+./bvi "John 3:16" --textshadow=6 --shadowmethod=2   # hard
+```
+
+The shadow method affects both `--textshadow` and `--citeshadow` together.
+
+### Line Spacing
+
+Adjust the amount of space between lines of verse text with `--linespacing`:
+
+```bash
+./bvi "John 3:16" --linespacing=10    # more space between lines
+./bvi "John 3:16" --linespacing=-5    # tighter lines
+./bvi "John 3:16" --linespacing=0     # ImageMagick default (no adjustment)
+```
+
+Positive values increase the gap; negative values reduce it. The default is `0` (no adjustment). This passes `-interline-spacing N` to ImageMagick's `caption:` operator.
 
 ## Citation
 
@@ -234,9 +268,14 @@ By default the citation uses the same font as the verse text. Override it indepe
 Add a drop shadow behind the citation text:
 
 ```bash
-./bvi "John 3:16" --citeshadow
-./bvi "John 3:16" --citeshadow --textshadow   # shadow on both verse and citation
+./bvi "John 3:16" --citeshadow                        # intensity 5 (default)
+./bvi "John 3:16" --citeshadow=3                      # lighter
+./bvi "John 3:16" --citeshadow=8                      # heavier
+./bvi "John 3:16" --no-citeshadow                     # explicitly off
+./bvi "John 3:16" --citeshadow --textshadow           # shadow on both verse and citation
 ```
+
+The `N` value ranges from 1 (lightest) to 10 (heaviest). Shadow style is controlled by `--shadowmethod` (see above).
 
 ### Size
 
@@ -338,9 +377,11 @@ textscale        = 100
 textpanel        = 0
 textpanelcolor   = black
 textshadow       = no
+shadowmethod     = 1
+linespacing      = 0
 ```
 
-Supported keys: `bv`, `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `citecolor`, `citefont`, `quotes`, `citesize`, `citescale`, `citestyle`, `citeplacement`, `citebibleversion`, `citeshadow`, `textsize`, `maxtextsize`, `textscale`, `textpanel`, `textpanelcolor`, `textshadow`
+Supported keys: `bv`, `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `citecolor`, `citefont`, `quotes`, `citesize`, `citescale`, `citestyle`, `citeplacement`, `citebibleversion`, `citeshadow`, `textsize`, `maxtextsize`, `textscale`, `textpanel`, `textpanelcolor`, `textshadow`, `shadowmethod`, `linespacing`
 
 ## Bible Translations
 
@@ -372,7 +413,11 @@ If a Bible translation file is not found, the program will prompt you to downloa
 | Version radio buttons | Switch KJV / BSB / WEB instantly |
 | Max text pt | Cap auto-fit font size (e.g. `140` for typical verse size) |
 | Text scale % | Scale text area (e.g. `75` for smaller text) |
+| Text shadow (0–10) | Intensity of drop shadow behind verse text; 0 = off |
 | Cite style | `dash` / `parens` / `plain` / `none` |
+| Cite placement | `bottom` (fixed near edge) or `below` (just under verse text) |
+| Cite shadow (0–10) | Intensity of drop shadow behind citation text; 0 = off |
+| Shadow method | `1` = soft Gaussian blur, `2` = hard offset copy |
 | Quotes checkbox | Toggle curly quotes |
 
 Chapter and verse boundaries are respected using the loaded Bible file — navigation wraps correctly at chapter ends and beginnings.

@@ -231,7 +231,7 @@ void printHelp() {
     cout << "  --citestyle=STYLE       dash (default): \xe2\x80\x94 Ref (Ver)  |  parens: (Ref, Ver)  |  plain: Ref (Ver)  |  none: omit citation\n";
     cout << "  --citeplacement=WHERE   bottom (default): near bottom edge  |  below: just under verse text\n";
     cout << "  --citebibleversion=VAL  yes (default): include Bible version in citation  |  no/false: omit it\n";
-    cout << "  --citeshadow            Add drop shadow behind citation text\n";
+    cout << "  --citeshadow[=N]        Add drop shadow behind citation text; N=1-10 intensity (default 5)\n";
     cout << "  --no-citeshadow         Remove citation drop shadow (default)\n";
     cout << "  --textsize=N            Force verse font to exactly N points (absolute; cannot combine with --textscale)\n";
     cout << "  --maxtextsize=N         Cap auto-fit verse font at N points (e.g. 140 for typical verses at 1080p); overrides --textsize\n";
@@ -240,12 +240,14 @@ void printHelp() {
     cout << "  --textpanelcolor=COLOR  Panel color (default: black); any ImageMagick color\n";
     cout << "  --textpanelrounded      Rounded corners on text panel\n";
     cout << "  --no-textpanelrounded   Square corners (default)\n";
-    cout << "  --textshadow            Add drop shadow behind verse text\n";
-    cout << "  --no-textshadow         Remove drop shadow (default)\n\n";
+    cout << "  --textshadow[=N]        Add drop shadow behind verse text; N=1-10 intensity (default 5)\n";
+    cout << "  --no-textshadow         Remove drop shadow (default)\n";
+    cout << "  --shadowmethod=N        Shadow style: 1=soft Gaussian blur (default), 2=hard offset copy\n";
+    cout << "  --linespacing=N         Adjust line spacing: positive=more, negative=less, 0=default\n\n";
     cout << "Config file (.luminaverse in current directory or $HOME, [bvi] section):\n";
     cout << "  --saveconfig            Save current settings to .luminaverse [bvi] as new defaults\n";
     cout << "  --showconfig            Print current effective settings and exit\n\n";
-    cout << "  Supported keys in [bvi]:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow\n\n";
+    cout << "  Supported keys in [bvi]:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow  shadowmethod  linespacing\n\n";
     cout << "Requires:\n";
     cout << "  ImageMagick  —  brew install imagemagick\n\n";
     cout << "Examples:\n";
@@ -327,14 +329,21 @@ int main(int argc, char* argv[]) {
     string citePlacement = cfgGet(cfg, "citeplacement", "bottom");       // bottom | below
     bool citeBibleVersion = (cfgGet(cfg, "citebibleversion", "yes") != "no" &&
                              cfgGet(cfg, "citebibleversion", "yes") != "false");
-    bool citeShadow      = cfgGet(cfg, "citeshadow",       "no") == "yes";
+    auto parseShadow = [](const string& v) -> int {
+        if (v == "yes") return 5;
+        if (v == "no" || v.empty()) return 0;
+        try { int n = stoi(v); return max(0, min(10, n)); } catch (...) { return 0; }
+    };
+    int citeShadow       = parseShadow(cfgGet(cfg, "citeshadow", "no"));
     int textSizePt       = stoi(cfgGet(cfg, "textsize",      "0"));      // 0 = off; absolute fixed size
     int maxTextSizePt    = stoi(cfgGet(cfg, "maxtextsize",   "0"));      // 0 = off; cap auto-fit
     int textScalePct     = stoi(cfgGet(cfg, "textscale",     "100"));    // 100 = fill canvas
     int textPanelOpacity = stoi(cfgGet(cfg, "textpanel",     "0"));      // 0 = off
     string textPanelColor = cfgGet(cfg, "textpanelcolor",   "black");
-    bool textShadow      = cfgGet(cfg, "textshadow",        "no") == "yes";
+    int textShadow       = parseShadow(cfgGet(cfg, "textshadow", "no"));
+    int shadowMethod     = max(1, min(2, stoi(cfgGet(cfg, "shadowmethod", "1"))));
     bool panelRounded    = cfgGet(cfg, "textpanelrounded",  "no") == "yes";
+    int lineSpacing      = stoi(cfgGet(cfg, "linespacing",    "0"));         // 0 = default; positive=more, negative=less
 
     bool saveConfig  = false;
     bool showConfig  = false;
@@ -387,10 +396,12 @@ int main(int argc, char* argv[]) {
         } else if (arg.find("--citebibleversion=") == 0) {
             string val = arg.substr(19);
             citeBibleVersion = (val != "no" && val != "false");
+        } else if (arg.find("--citeshadow=") == 0) {
+            citeShadow = max(0, min(10, stoi(arg.substr(13))));
         } else if (arg == "--citeshadow") {
-            citeShadow = true;
+            citeShadow = 5;
         } else if (arg == "--no-citeshadow") {
-            citeShadow = false;
+            citeShadow = 0;
         } else if (arg.find("--textsize=") == 0) {
             textSizePt = stoi(arg.substr(11));
         } else if (arg.find("--maxtextsize=") == 0) {
@@ -401,10 +412,16 @@ int main(int argc, char* argv[]) {
             textPanelOpacity = stoi(arg.substr(12));
         } else if (arg.find("--textpanelcolor=") == 0) {
             textPanelColor = arg.substr(17);
+        } else if (arg.find("--textshadow=") == 0) {
+            textShadow = max(0, min(10, stoi(arg.substr(13))));
         } else if (arg == "--textshadow") {
-            textShadow = true;
+            textShadow = 5;
         } else if (arg == "--no-textshadow") {
-            textShadow = false;
+            textShadow = 0;
+        } else if (arg.find("--shadowmethod=") == 0) {
+            shadowMethod = max(1, min(2, stoi(arg.substr(15))));
+        } else if (arg.find("--linespacing=") == 0) {
+            lineSpacing = stoi(arg.substr(14));
         } else if (arg == "--textpanelrounded") {
             panelRounded = true;
         } else if (arg == "--no-textpanelrounded") {
@@ -468,14 +485,16 @@ int main(int argc, char* argv[]) {
         cout << "  citestyle        = " << citeStyle     << "\n";
         cout << "  citeplacement    = " << citePlacement << "\n";
         cout << "  citebibleversion = " << (citeBibleVersion ? "yes" : "no") << "\n";
-        cout << "  citeshadow       = " << (citeShadow ? "yes" : "no") << "\n";
+        cout << "  citeshadow       = " << (citeShadow > 0 ? to_string(citeShadow) : "no") << "\n";
         cout << "  textsize         = " << (textSizePt    > 0 ? to_string(textSizePt)    : "off") << "\n";
         cout << "  maxtextsize      = " << (maxTextSizePt > 0 ? to_string(maxTextSizePt) : "off") << "\n";
         cout << "  textscale        = " << textScalePct << "%\n";
         cout << "  textpanel        = " << (textPanelOpacity > 0 ? to_string(textPanelOpacity) + "%" : "off") << "\n";
         cout << "  textpanelcolor   = " << textPanelColor << "\n";
         cout << "  textpanelrounded = " << (panelRounded ? "yes" : "no") << "\n";
-        cout << "  textshadow       = " << (textShadow ? "yes" : "no") << "\n";
+        cout << "  textshadow       = " << (textShadow > 0 ? to_string(textShadow) : "no") << "\n";
+        cout << "  shadowmethod     = " << shadowMethod << "\n";
+        cout << "  linespacing      = " << lineSpacing << "\n";
         ifstream check(CONFIG_FILE);
         if (check.good())
             cout << "\nConfig file: ./" << CONFIG_FILE << " (loaded)\n";
@@ -510,14 +529,16 @@ int main(int argc, char* argv[]) {
             "citestyle        = " + citeStyle,
             "citeplacement    = " + citePlacement,
             "citebibleversion = " + string(citeBibleVersion ? "yes" : "no"),
-            "citeshadow       = " + string(citeShadow ? "yes" : "no"),
+            "citeshadow       = " + (citeShadow > 0 ? to_string(citeShadow) : string("no")),
             "textsize         = " + to_string(textSizePt),
             "maxtextsize      = " + to_string(maxTextSizePt),
             "textscale        = " + to_string(textScalePct),
             "textpanel        = " + to_string(textPanelOpacity),
             "textpanelcolor   = " + textPanelColor,
             "textpanelrounded = " + string(panelRounded ? "yes" : "no"),
-            "textshadow       = " + string(textShadow ? "yes" : "no")
+            "textshadow       = " + (textShadow > 0 ? to_string(textShadow) : string("no")),
+            "shadowmethod     = " + to_string(shadowMethod),
+            "linespacing      = " + to_string(lineSpacing)
         };
         if (!writeSection(lines)) { cerr << "Error: could not write '" << CONFIG_FILE << "'.\n"; return 1; }
         cerr << "Saved [" << SECTION << "] to ./" << CONFIG_FILE << "\n";
@@ -659,7 +680,7 @@ int main(int argc, char* argv[]) {
 
     // When using a photo background or text shadow the verse layer needs a
     // transparent background so it composites cleanly.
-    string layerBg = (bgPhoto.empty() && !textShadow) ? bgColor : "none";
+    string layerBg = (bgPhoto.empty() && textShadow == 0) ? bgColor : "none";
 
     // Determine whether and at what size to pass -pointsize to caption:.
     // caption: with -pointsize uses a fixed/max size rather than auto-filling,
@@ -674,6 +695,7 @@ int main(int argc, char* argv[]) {
              << " -fill \""       << textColor << "\""
              << " -font \""       << font << "\""
              << " -gravity Center"
+             << (lineSpacing != 0 ? " -interline-spacing " + to_string(lineSpacing) : "")
              << " -size "         << verseW << "x" << verseH
              << " caption:"       << quotedVerse
              << " -verbose info:";
@@ -701,6 +723,7 @@ int main(int argc, char* argv[]) {
          << " -fill \""       << textColor << "\""
          << " -font \""       << font << "\""
          << " -gravity Center"                        // center-align each text line
+         << (lineSpacing != 0 ? " -interline-spacing " + to_string(lineSpacing) : "")
          << " -size "         << verseW << "x" << verseH
          << (applyPointsize ? " -pointsize " + to_string(applyPointsizeN) : "")
          << " caption:"      << quotedVerse
@@ -721,10 +744,14 @@ int main(int argc, char* argv[]) {
     // ── Optional shadow step ──────────────────────────────────────────────
     string tmpShadow  = outputFile + ".tmp_shadow.png";
     string activeLayer = tmpLayer;
-    if (textShadow) {
+    if (textShadow > 0) {
+        double sigma   = (shadowMethod == 1) ? textShadow * 0.8 : 0.0;
+        int    offset  = max(1, (int)round(textShadow * 0.6));
+        int    opacity = (shadowMethod == 1) ? 80 : 100;
         ostringstream shadowCmd;
         shadowCmd << im << " \"" << tmpLayer << "\""
-                  << " \\( +clone -background black -shadow 80x4+3+3 \\)"
+                  << " \\( +clone -background black -shadow " << opacity << "x" << sigma
+                  << "+" << offset << "+" << offset << " \\)"
                   << " +swap -background none -flatten"
                   << " \"" << tmpShadow << "\"";
         if (system(shadowCmd.str().c_str()) == 0)
@@ -805,23 +832,36 @@ int main(int argc, char* argv[]) {
     ostringstream citeAnnot;
     if (citeStyle != "none") {
         string activeCiteFont = citeFont.empty() ? font : citeFont;
-        int shadowOff = max(2, (int)(3 * scale));
+        double citeSigma  = citeShadow * 0.8 * scale;
+        int    shadowOff  = max(1, (int)round(3 * scale * citeShadow / 5.0));
 
         if (citePlacement == "below") {
-            // Place baseline so citation text TOP lands visibleGap below the verse layer.
-            // citePt * 3/4 approximates the ascent so the gap is independent of citation size.
             int visibleGap = max(8, (int)(16 * scale));
             int offset     = -verseOffY + layerH / 2 + visibleGap + citePt * 3 / 4;
 
-            if (citeShadow) {
+            if (citeShadow > 0) {
                 int shadowY = offset + shadowOff;
-                citeAnnot << " -fill black"
-                          << " -font \"" << activeCiteFont << "\""
-                          << " -pointsize " << citePt
-                          << " -gravity Center"
-                          << " -annotate +" << shadowOff
-                          << (shadowY >= 0 ? "+" : "-") << abs(shadowY)
-                          << " " << quotedCitation;
+                if (shadowMethod == 1) {
+                    citeAnnot << " \\( -size " << imgWidth << "x" << imgHeight << " xc:none"
+                              << " -fill black"
+                              << " -font \"" << activeCiteFont << "\""
+                              << " -pointsize " << citePt
+                              << " -gravity Center"
+                              << " -annotate +" << shadowOff
+                              << (shadowY >= 0 ? "+" : "-") << abs(shadowY)
+                              << " " << quotedCitation
+                              << " -blur 0x" << citeSigma
+                              << " -channel Alpha -evaluate multiply 0.8 +channel \\)"
+                              << " -composite";
+                } else {
+                    citeAnnot << " -fill black"
+                              << " -font \"" << activeCiteFont << "\""
+                              << " -pointsize " << citePt
+                              << " -gravity Center"
+                              << " -annotate +" << shadowOff
+                              << (shadowY >= 0 ? "+" : "-") << abs(shadowY)
+                              << " " << quotedCitation;
+                }
             }
 
             citeAnnot << " -fill \"" << citeColor << "\""
@@ -832,14 +872,27 @@ int main(int argc, char* argv[]) {
                       << abs(offset)
                       << " " << quotedCitation;
         } else {
-            if (citeShadow) {
+            if (citeShadow > 0) {
                 int shadowSouthY = max(0, citeOffY - shadowOff);
-                citeAnnot << " -fill black"
-                          << " -font \"" << activeCiteFont << "\""
-                          << " -pointsize " << citePt
-                          << " -gravity South"
-                          << " -annotate +" << shadowOff << "+" << shadowSouthY
-                          << " " << quotedCitation;
+                if (shadowMethod == 1) {
+                    citeAnnot << " \\( -size " << imgWidth << "x" << imgHeight << " xc:none"
+                              << " -fill black"
+                              << " -font \"" << activeCiteFont << "\""
+                              << " -pointsize " << citePt
+                              << " -gravity South"
+                              << " -annotate +" << shadowOff << "+" << shadowSouthY
+                              << " " << quotedCitation
+                              << " -blur 0x" << citeSigma
+                              << " -channel Alpha -evaluate multiply 0.8 +channel \\)"
+                              << " -composite";
+                } else {
+                    citeAnnot << " -fill black"
+                              << " -font \"" << activeCiteFont << "\""
+                              << " -pointsize " << citePt
+                              << " -gravity South"
+                              << " -annotate +" << shadowOff << "+" << shadowSouthY
+                              << " " << quotedCitation;
+                }
             }
 
             citeAnnot << " -fill \"" << citeColor << "\""
@@ -889,7 +942,7 @@ int main(int argc, char* argv[]) {
     int ret2 = system(cmd2.str().c_str());
 
     remove(tmpLayer.c_str());
-    if (textShadow) remove(tmpShadow.c_str());
+    if (textShadow > 0) remove(tmpShadow.c_str());
 
     if (ret2 != 0) {
         cerr << "Error: image generation failed.\n\n";
