@@ -124,9 +124,10 @@ Full docs: [fontlist.md](fontlist.md)
 Prints the current day of the year and opens a YouTube search for that day's Bible Recap. Use `-d` to print the day number only.
 
 ```bash
-./day                # open YouTube Bible Recap for today
-./day -d             # print day number only
-./day && ./bv -d     # open Bible Recap and print today's reading plan
+./day                # open YouTube search for today's video
+./day -d             # print today's day of the year number only
+./day && ./bv -d     # open YouTube search and print today's reading plan
+./day -h             # show help for the day command line program
 ```
 
 Full docs: [day.md](day.md)
