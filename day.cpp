@@ -11,6 +11,7 @@
 #include <string>
 #include <ctime>
 #include <cstdlib>
+#include <clocale>
 using namespace std;
 
 static int dayOfYear() {
@@ -62,6 +63,7 @@ static string loadQueryFile() {
 
 int main(int argc, char* argv[]) {
     bool   dayOnly     = false;
+    bool   planMode    = false;
     int    dayOverride = -1;   // -1 = use current day
     string queryTpl;           // empty = load from .day file or use built-in default
 
@@ -69,12 +71,13 @@ int main(int argc, char* argv[]) {
         string arg = argv[i];
         if (arg == "-h" || arg == "--help") {
             cout << "day — print the current day of the year (Jan 1 = 1)\n\n"
-                 << "Usage: day [-d[=N]|--day[=N]] [-y|--youtube] [-q=TEXT|--query=TEXT]\n\n"
+                 << "Usage: day [-d[=N]|--day[=N]] [-y|--youtube] [-q=TEXT|--query=TEXT] [-p|--plan]\n\n"
                  << "  (default)              Print day number and open YouTube The Bible Recap search\n"
                  << "  -d, --day              Print day number only, no YouTube\n"
                  << "  -d=N, --day=N          Use day N instead of today (still opens YouTube)\n"
                  << "  -y, --youtube          Open YouTube (explicit; already the default)\n"
                  << "  -q=TEXT, --query=TEXT  Override search query ({day} = day number)\n"
+                 << "  -p, --plan             Print day number and run: bv --day --refonly\n"
                  << "  -h, --help             Show this help\n\n"
                  << "Config file (.day in current dir or $HOME):\n"
                  << "  First non-blank, non-comment line is used as the default query.\n"
@@ -84,7 +87,8 @@ int main(int argc, char* argv[]) {
                  << "  day                               # open YouTube for today's recap\n"
                  << "  day -d                            # print day number only\n"
                  << "  day -d=203                        # open YouTube for day 203\n"
-                 << "  day -q=\"Day {day} The Bible Recap\" # custom query\n";
+                 << "  day -q=\"Day {day} The Bible Recap\" # custom query\n"
+                 << "  day -p                            # print day number and run bv --day --refonly\n";
             return 0;
         } else if (arg.find("-d=") == 0 || arg.find("--day=") == 0) {
             dayOverride = stoi(arg.substr(arg.find('=') + 1));
@@ -97,11 +101,31 @@ int main(int argc, char* argv[]) {
             queryTpl = arg.substr(8);
         } else if (arg.find("-q=") == 0) {
             queryTpl = arg.substr(3);
+        } else if (arg == "-p" || arg == "--plan") {
+            planMode = true;
         }
     }
 
     int day = (dayOverride > 0) ? dayOverride : dayOfYear();
     cout << day << "\n";
+
+    if (planMode) {
+        setlocale(LC_TIME, "");
+        time_t now = time(nullptr);
+        struct tm target = *localtime(&now);
+        target.tm_mon  = 0;
+        target.tm_mday = day;  // mktime normalizes day-of-year into correct month/day
+        target.tm_hour = 12;
+        target.tm_min  = 0;
+        target.tm_sec  = 0;
+        mktime(&target);
+        char dateBuf[64];
+        strftime(dateBuf, sizeof(dateBuf), "%x", &target);
+        cout << dateBuf << "\n";
+        ifstream localBv("./bv");
+        const string bvCmd = localBv.good() ? "./bv --day --refonly" : "bv --day --refonly";
+        return system(bvCmd.c_str());
+    }
 
     if (!dayOnly) {
         if (queryTpl.empty()) {

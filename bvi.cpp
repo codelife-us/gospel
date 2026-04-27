@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <map>
 #include <fstream>
+#include <vector>
 #include <sstream>
 #include <cstdio>
 #include <cstdlib>
@@ -48,30 +49,35 @@ using namespace std;
 #endif
 
 const string BVI_VERSION = "1.3";
-const string CONFIG_FILE = ".bvi";
+const string CONFIG_FILE = ".luminaverse";
+const string SECTION     = "bvi";
 
-// ── Config file (.bvi in current directory) ───────────────────────────────────
+// ── Config file (.luminaverse, [bvi] section) ─────────────────────────────────
 
-// Read key=value pairs from CONFIG_FILE. Lines starting with # are comments.
+// Read key=value pairs from the [bvi] section of CONFIG_FILE.
 map<string, string> loadConfig() {
     map<string, string> cfg;
     ifstream f(CONFIG_FILE);
     if (!f.good()) return cfg;
     string line;
+    bool inSection = false;
     while (getline(f, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
-        // trim leading whitespace
         size_t s = line.find_first_not_of(" \t");
-        if (s == string::npos || line[s] == '#') continue;
+        if (s == string::npos) continue;
+        if (line[s] == '[') {
+            size_t e = line.find(']', s);
+            inSection = (e != string::npos && line.substr(s + 1, e - s - 1) == SECTION);
+            continue;
+        }
+        if (!inSection || line[s] == '#') continue;
         line = line.substr(s);
         size_t eq = line.find('=');
         if (eq == string::npos) continue;
         string key = line.substr(0, eq);
         string val = line.substr(eq + 1);
-        // trim trailing whitespace from key
         size_t ke = key.find_last_not_of(" \t");
         if (ke != string::npos) key = key.substr(0, ke + 1);
-        // trim leading whitespace from value
         size_t vs = val.find_first_not_of(" \t");
         val = (vs != string::npos) ? val.substr(vs) : "";
         if (!key.empty()) cfg[key] = val;
@@ -229,10 +235,10 @@ void printHelp() {
     cout << "  --no-textpanelrounded   Square corners (default)\n";
     cout << "  --textshadow            Add drop shadow behind verse text\n";
     cout << "  --no-textshadow         Remove drop shadow (default)\n\n";
-    cout << "Config file (.bvi in current directory):\n";
-    cout << "  --saveconfig            Save current settings to .bvi as new defaults\n";
+    cout << "Config file (.luminaverse in current directory, [bvi] section):\n";
+    cout << "  --saveconfig            Save current settings to .luminaverse [bvi] as new defaults\n";
     cout << "  --showconfig            Print current effective settings and exit\n\n";
-    cout << "  Supported keys in .bvi:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow\n\n";
+    cout << "  Supported keys in [bvi]:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow\n\n";
     cout << "Requires:\n";
     cout << "  ImageMagick  —  brew install imagemagick\n\n";
     cout << "Examples:\n";
@@ -243,6 +249,37 @@ void printHelp() {
     cout << "  bvi --bg=navy --textcolor=gold --citecolor=lightyellow --saveconfig\n";
     cout << "\nTo list available fonts: magick -list font\n";
     cout << "  Or pass a font file path: --font=\"/path/to/font.ttf\"\n";
+}
+
+static bool writeSection(const vector<string>& lines) {
+    vector<string> before, after;
+    bool inTarget = false, found = false;
+    ifstream f(CONFIG_FILE);
+    if (f.good()) {
+        string line;
+        while (getline(f, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            size_t s = line.find_first_not_of(" \t");
+            if (s != string::npos && line[s] == '[') {
+                size_t e = line.find(']', s);
+                string sec = (e != string::npos) ? line.substr(s + 1, e - s - 1) : "";
+                if (sec == SECTION) { inTarget = true; found = true; continue; }
+                else inTarget = false;
+            }
+            if (inTarget) continue;
+            (found ? after : before).push_back(line);
+        }
+    }
+    while (!before.empty() && before.back().empty()) before.pop_back();
+    while (!after.empty() && after.front().empty()) after.erase(after.begin());
+    ofstream out(CONFIG_FILE);
+    if (!out) return false;
+    for (const string& l : before) out << l << "\n";
+    if (!before.empty()) out << "\n";
+    out << "[" << SECTION << "]\n";
+    for (const string& l : lines) out << l << "\n";
+    if (!after.empty()) { out << "\n"; for (const string& l : after) out << l << "\n"; }
+    return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -440,39 +477,36 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // ── --saveconfig: write current settings to .bvi and exit ─────────────
+    // ── --saveconfig: write [bvi] section of .luminaverse and exit ────────
     if (saveConfig) {
-        ofstream f(CONFIG_FILE);
-        if (!f) {
-            cerr << "Error: could not write '" << CONFIG_FILE << "'.\n";
-            return 1;
-        }
-        f << "# bvi configuration — generated by bvi --saveconfig\n";
-        f << "bv               = " << version   << "\n";
-        f << "width            = " << imgWidth  << "\n";
-        f << "height           = " << imgHeight << "\n";
-        f << "font             = " << font      << "\n";
-        f << "bg               = " << bgColor   << "\n";
-        f << "bgphoto          = " << bgPhoto   << "\n";
-        f << "dim              = " << dimPct    << "\n";
-        f << "textcolor        = " << textColor << "\n";
-        f << "citecolor        = " << citeColor << "\n";
-        f << "citefont         = " << citeFont  << "\n";
-        f << "quotes           = " << (quotes ? "yes" : "no") << "\n";
-        f << "citesize         = " << citeSizeOvr   << "\n";
-        f << "citescale        = " << citeScalePct  << "\n";
-        f << "citestyle        = " << citeStyle     << "\n";
-        f << "citeplacement    = " << citePlacement << "\n";
-        f << "citebibleversion = " << (citeBibleVersion ? "yes" : "no") << "\n";
-        f << "citeshadow       = " << (citeShadow ? "yes" : "no") << "\n";
-        f << "textsize         = " << textSizePt     << "\n";
-        f << "maxtextsize      = " << maxTextSizePt  << "\n";
-        f << "textscale        = " << textScalePct  << "\n";
-        f << "textpanel        = " << textPanelOpacity << "\n";
-        f << "textpanelcolor   = " << textPanelColor   << "\n";
-        f << "textpanelrounded = " << (panelRounded ? "yes" : "no") << "\n";
-        f << "textshadow       = " << (textShadow ? "yes" : "no") << "\n";
-        cerr << "Saved defaults to ./" << CONFIG_FILE << "\n";
+        vector<string> lines = {
+            "bv               = " + version,
+            "width            = " + to_string(imgWidth),
+            "height           = " + to_string(imgHeight),
+            "font             = " + font,
+            "bg               = " + bgColor,
+            "bgphoto          = " + bgPhoto,
+            "dim              = " + to_string(dimPct),
+            "textcolor        = " + textColor,
+            "citecolor        = " + citeColor,
+            "citefont         = " + citeFont,
+            "quotes           = " + string(quotes ? "yes" : "no"),
+            "citesize         = " + to_string(citeSizeOvr),
+            "citescale        = " + to_string(citeScalePct),
+            "citestyle        = " + citeStyle,
+            "citeplacement    = " + citePlacement,
+            "citebibleversion = " + string(citeBibleVersion ? "yes" : "no"),
+            "citeshadow       = " + string(citeShadow ? "yes" : "no"),
+            "textsize         = " + to_string(textSizePt),
+            "maxtextsize      = " + to_string(maxTextSizePt),
+            "textscale        = " + to_string(textScalePct),
+            "textpanel        = " + to_string(textPanelOpacity),
+            "textpanelcolor   = " + textPanelColor,
+            "textpanelrounded = " + string(panelRounded ? "yes" : "no"),
+            "textshadow       = " + string(textShadow ? "yes" : "no")
+        };
+        if (!writeSection(lines)) { cerr << "Error: could not write '" << CONFIG_FILE << "'.\n"; return 1; }
+        cerr << "Saved [" << SECTION << "] to ./" << CONFIG_FILE << "\n";
         return 0;
     }
 

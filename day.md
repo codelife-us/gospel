@@ -1,6 +1,6 @@
 # day
 
-A small C++ utility that prints the current day of the year (Jan 1 = 1) and opens a YouTube search for the day's Bible Recap. Opening YouTube is the default behavior; use `-d` to print the day number only.
+A small C++ utility that prints the current day of the year (Jan 1 = 1) and opens a YouTube search for the day's video. Opening YouTube is the default behavior; use `-d` to print the day number only.
 
 ## Building
 
@@ -11,7 +11,7 @@ g++ -std=c++11 -o day day.cpp
 ## Usage
 
 ```bash
-./day          # print day number and open YouTube Bible Recap search
+./day          # print day number and open YouTube search
 ./day -d       # print day number only, no YouTube
 ```
 

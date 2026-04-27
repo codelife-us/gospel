@@ -27,7 +27,7 @@ A C++ program that renders a Bible verse reference (or custom text) to a JPEG im
 - Semi-transparent panel behind verse text for readability (`--textpanel`)
 - Drop shadow behind verse text (`--textshadow`)
 - Custom font support
-- Config file (`.bvi`) stores per-folder defaults for version, size, colors, and style
+- Config file (`.luminaverse` `[bvi]` section) stores per-folder defaults for version, size, colors, and style
 - Default output filename derived from the reference (e.g. `John_3_16.jpg`)
 - Auto-prompts to download the Bible translation file if not found
 
@@ -297,7 +297,7 @@ To list fonts available to ImageMagick:
 magick -list font
 ```
 
-## Config File (.bvi)
+## Config File (.luminaverse [bvi])
 
 Run `--saveconfig` to save the current settings as defaults for the current folder. Any subsequent `bvi` run in that folder will use those values automatically. Command-line arguments always override the config.
 
@@ -312,9 +312,9 @@ Show current effective settings:
 ./bvi --showconfig
 ```
 
-The `.bvi` file is plain text and can be edited by hand:
+The `[bvi]` section of `.luminaverse` is plain text and can be edited by hand:
 ```
-# bvi configuration
+[bvi]
 bv               = KJV
 width            = 1920
 height           = 1080
@@ -384,4 +384,4 @@ Chapter and verse boundaries are respected using the loaded Bible file — navig
 - `BibleKJV.txt` — KJV Bible text (shared with gospel, downloaded on first use)
 - `BibleBSB.txt` — BSB Bible text (shared with gospel, downloaded on first use)
 - `BibleWEB.txt` — WEB Bible text (shared with gospel, downloaded on first use)
-- `.bvi` — Optional per-folder config file (created by `--saveconfig`)
+- `.luminaverse` — Shared config file; `[bvi]` section created by `--saveconfig`
