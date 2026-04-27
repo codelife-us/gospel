@@ -55,10 +55,17 @@ const string SECTION     = "bvi";
 // ── Config file (.luminaverse, [bvi] section) ─────────────────────────────────
 
 // Read key=value pairs from the [bvi] section of CONFIG_FILE.
+// Falls back to $HOME/.luminaverse if not found in current directory.
 map<string, string> loadConfig() {
     map<string, string> cfg;
     ifstream f(CONFIG_FILE);
-    if (!f.good()) return cfg;
+    if (!f.good()) {
+        const char* home = getenv(HOME_ENV);
+        if (!home) return cfg;
+        ifstream fh(string(home) + "/" + CONFIG_FILE);
+        if (!fh.good()) return cfg;
+        swap(f, fh);
+    }
     string line;
     bool inSection = false;
     while (getline(f, line)) {
@@ -235,7 +242,7 @@ void printHelp() {
     cout << "  --no-textpanelrounded   Square corners (default)\n";
     cout << "  --textshadow            Add drop shadow behind verse text\n";
     cout << "  --no-textshadow         Remove drop shadow (default)\n\n";
-    cout << "Config file (.luminaverse in current directory, [bvi] section):\n";
+    cout << "Config file (.luminaverse in current directory or $HOME, [bvi] section):\n";
     cout << "  --saveconfig            Save current settings to .luminaverse [bvi] as new defaults\n";
     cout << "  --showconfig            Print current effective settings and exit\n\n";
     cout << "  Supported keys in [bvi]:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow\n\n";
@@ -472,8 +479,15 @@ int main(int argc, char* argv[]) {
         ifstream check(CONFIG_FILE);
         if (check.good())
             cout << "\nConfig file: ./" << CONFIG_FILE << " (loaded)\n";
-        else
-            cout << "\nConfig file: ./" << CONFIG_FILE << " (not found — using defaults)\n";
+        else {
+            const char* home = getenv(HOME_ENV);
+            string homeCfg = home ? string(home) + "/" + CONFIG_FILE : "";
+            ifstream homeCheck(homeCfg);
+            if (!homeCfg.empty() && homeCheck.good())
+                cout << "\nConfig file: " << homeCfg << " (loaded)\n";
+            else
+                cout << "\nConfig file: " << CONFIG_FILE << " (not found — using defaults)\n";
+        }
         return 0;
     }
 
