@@ -32,15 +32,56 @@
 #include <fstream>
 #include <vector>
 #include <sstream>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #ifdef _WIN32
 #include <windows.h>
-#define popen  _popen
 #define pclose _pclose
 #endif
 
 using namespace std;
+
+// runSystem / runPopen — platform wrappers
+//
+// On Windows we bypass cmd.exe entirely:
+//   • runSystem uses CreateProcess directly, eliminating ~0.3-0.5 s of
+//     shell-startup overhead per ImageMagick call and preserving UTF-8
+//     characters (em dash, curly quotes) that cmd.exe would mangle via ANSI.
+//   • runPopen still uses _wpopen (cmd.exe) because piped output capture
+//     needs the shell infrastructure; it is only used for optional features.
+#ifdef _WIN32
+static int runSystem(const string& utf8cmd) {
+    int n = MultiByteToWideChar(CP_UTF8, 0, utf8cmd.c_str(), -1, nullptr, 0);
+    if (n <= 0) return -1;
+    wstring wc(n, 0);
+    MultiByteToWideChar(CP_UTF8, 0, utf8cmd.c_str(), -1, &wc[0], n);
+    STARTUPINFOW si = {};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = {};
+    if (!CreateProcessW(nullptr, wc.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+        return 1;
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return (int)code;
+}
+static FILE* runPopen(const string& utf8cmd, const char* mode) {
+    int n = MultiByteToWideChar(CP_UTF8, 0, utf8cmd.c_str(), -1, nullptr, 0);
+    if (n <= 0) return nullptr;
+    wstring wc(n, 0);
+    MultiByteToWideChar(CP_UTF8, 0, utf8cmd.c_str(), -1, &wc[0], n);
+    wchar_t wm[8] = {};
+    for (size_t i = 0; mode[i] && i < 7; ++i) wm[i] = (wchar_t)mode[i];
+    return _wpopen(wc.c_str(), wm);
+}
+#else
+static int   runSystem(const string& cmd)                  { return system(cmd.c_str()); }
+static FILE* runPopen(const string& cmd, const char* mode) { return popen(cmd.c_str(), mode); }
+#endif
 
 #ifdef _WIN32
 #define HOME_ENV "USERPROFILE"
@@ -180,24 +221,38 @@ string refToFilename(const string& ref) {
     return s + ".jpg";
 }
 
-// Wraps s in single quotes, escaping any embedded single quotes.
+// Wraps s in shell quotes suitable for the current platform.
+// On Windows, system() uses cmd.exe, which does not support POSIX single-quote
+// quoting — single-quoted text is split on spaces, causing later words to be
+// interpreted as filenames by ImageMagick.  Use double-quote style instead.
 string shellQuote(const string& s) {
+#ifdef _WIN32
+    string r = "\"";
+    for (char c : s) {
+        if (c == '"') r += "\"\"";   // "" is the cmd.exe literal-double-quote escape
+        else r += c;
+    }
+    return r + "\"";
+#else
     string r = "'";
     for (char c : s) {
         if (c == '\'') r += "'\\''";
         else r += c;
     }
     return r + "'";
+#endif
 }
 
 // Returns "magick" if available, "convert" if not, or "" if neither found.
 string detectIM() {
 #ifdef _WIN32
-    if (system("magick -version >NUL 2>&1") == 0) return "magick";
-    if (system("convert -version >NUL 2>&1") == 0) return "convert";
+    // SearchPathW is an instant filesystem probe — no process spawn needed.
+    wchar_t probe[MAX_PATH];
+    if (SearchPathW(nullptr, L"magick",  L".exe", MAX_PATH, probe, nullptr)) return "magick";
+    if (SearchPathW(nullptr, L"convert", L".exe", MAX_PATH, probe, nullptr)) return "convert";
 #else
-    if (system("magick -version >/dev/null 2>&1") == 0) return "magick";
-    if (system("convert -version >/dev/null 2>&1") == 0) return "convert";
+    if (runSystem("magick -version >/dev/null 2>&1") == 0) return "magick";
+    if (runSystem("convert -version >/dev/null 2>&1") == 0) return "convert";
 #endif
     return "";
 }
@@ -233,6 +288,7 @@ void printHelp() {
     cout << "  --citebibleversion=VAL  yes (default): include Bible version in citation  |  no/false: omit it\n";
     cout << "  --citeshadow[=N]        Add drop shadow behind citation text; N=1-10 intensity (default 5)\n";
     cout << "  --no-citeshadow         Remove citation drop shadow (default)\n";
+    cout << "  --citealign=ALIGN       center (default) | left | right\n";
     cout << "  --textsize=N            Force verse font to exactly N points (absolute; cannot combine with --textscale)\n";
     cout << "  --maxtextsize=N         Cap auto-fit verse font at N points (e.g. 140 for typical verses at 1080p); overrides --textsize\n";
     cout << "  --textscale=PCT         Scale verse text area to PCT% of default (e.g. 75); cannot combine with --textsize/--maxtextsize\n";
@@ -243,11 +299,13 @@ void printHelp() {
     cout << "  --textshadow[=N]        Add drop shadow behind verse text; N=1-10 intensity (default 5)\n";
     cout << "  --no-textshadow         Remove drop shadow (default)\n";
     cout << "  --shadowmethod=N        Shadow style: 1=soft Gaussian blur (default), 2=hard offset copy\n";
-    cout << "  --linespacing=N         Adjust line spacing: positive=more, negative=less, 0=default\n\n";
+    cout << "  --linespacing=N         Adjust line spacing: positive=more, negative=less, 0=default\n";
+    cout << "  --textoffy=N            Shift verse text vertically; positive=down, negative=up (default 0)\n";
+    cout << "  --citeoffy=N            Shift citation vertically; positive=toward bottom edge, negative=away (default 0)\n\n";
     cout << "Config file (.luminaverse in current directory or $HOME, [bvi] section):\n";
     cout << "  --saveconfig            Save current settings to .luminaverse [bvi] as new defaults\n";
     cout << "  --showconfig            Print current effective settings and exit\n\n";
-    cout << "  Supported keys in [bvi]:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow  shadowmethod  linespacing\n\n";
+    cout << "  Supported keys in [bvi]:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  citealign  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow  shadowmethod  linespacing  textoffy  citeoffy\n\n";
     cout << "Requires:\n";
     cout << "  ImageMagick  —  brew install imagemagick\n\n";
     cout << "Examples:\n";
@@ -296,6 +354,14 @@ int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
+    // ImageMagick group operators: bash requires \( \) to avoid shell
+    // interpretation; Windows (CreateProcess or cmd.exe) uses bare ( ).
+#ifdef _WIN32
+    const string LP = "(", RP = ")";
+#else
+    const string LP = "\\(", RP = "\\)";
+#endif
+
     string im = detectIM();
 
     // ── Load config file first; command-line args override these values ───
@@ -335,6 +401,7 @@ int main(int argc, char* argv[]) {
         try { int n = stoi(v); return max(0, min(10, n)); } catch (...) { return 0; }
     };
     int citeShadow       = parseShadow(cfgGet(cfg, "citeshadow", "no"));
+    string citeAlign     = cfgGet(cfg, "citealign",     "center");       // center | left | right
     int textSizePt       = stoi(cfgGet(cfg, "textsize",      "0"));      // 0 = off; absolute fixed size
     int maxTextSizePt    = stoi(cfgGet(cfg, "maxtextsize",   "0"));      // 0 = off; cap auto-fit
     int textScalePct     = stoi(cfgGet(cfg, "textscale",     "100"));    // 100 = fill canvas
@@ -344,6 +411,8 @@ int main(int argc, char* argv[]) {
     int shadowMethod     = max(1, min(2, stoi(cfgGet(cfg, "shadowmethod", "1"))));
     bool panelRounded    = cfgGet(cfg, "textpanelrounded",  "no") == "yes";
     int lineSpacing      = stoi(cfgGet(cfg, "linespacing",    "0"));         // 0 = default; positive=more, negative=less
+    int textOffsetY      = stoi(cfgGet(cfg, "textoffy",      "0"));         // 0 = default; positive=down, negative=up
+    int citeOffsetY      = stoi(cfgGet(cfg, "citeoffy",      "0"));         // 0 = default; positive=toward bottom, negative=away
 
     bool saveConfig  = false;
     bool showConfig  = false;
@@ -402,6 +471,8 @@ int main(int argc, char* argv[]) {
             citeShadow = 5;
         } else if (arg == "--no-citeshadow") {
             citeShadow = 0;
+        } else if (arg.find("--citealign=") == 0) {
+            citeAlign = arg.substr(12);
         } else if (arg.find("--textsize=") == 0) {
             textSizePt = stoi(arg.substr(11));
         } else if (arg.find("--maxtextsize=") == 0) {
@@ -422,6 +493,10 @@ int main(int argc, char* argv[]) {
             shadowMethod = max(1, min(2, stoi(arg.substr(15))));
         } else if (arg.find("--linespacing=") == 0) {
             lineSpacing = stoi(arg.substr(14));
+        } else if (arg.find("--textoffy=") == 0) {
+            textOffsetY = stoi(arg.substr(11));
+        } else if (arg.find("--citeoffy=") == 0) {
+            citeOffsetY = stoi(arg.substr(11));
         } else if (arg == "--textpanelrounded") {
             panelRounded = true;
         } else if (arg == "--no-textpanelrounded") {
@@ -465,6 +540,10 @@ int main(int argc, char* argv[]) {
         cerr << "Error: --citeplacement must be bottom or below.\n";
         return 1;
     }
+    if (citeAlign != "center" && citeAlign != "left" && citeAlign != "right") {
+        cerr << "Error: --citealign must be center, left, or right.\n";
+        return 1;
+    }
 
     // ── --showconfig: print effective settings and exit ───────────────────
     if (showConfig) {
@@ -486,6 +565,7 @@ int main(int argc, char* argv[]) {
         cout << "  citeplacement    = " << citePlacement << "\n";
         cout << "  citebibleversion = " << (citeBibleVersion ? "yes" : "no") << "\n";
         cout << "  citeshadow       = " << (citeShadow > 0 ? to_string(citeShadow) : "no") << "\n";
+        cout << "  citealign        = " << citeAlign << "\n";
         cout << "  textsize         = " << (textSizePt    > 0 ? to_string(textSizePt)    : "off") << "\n";
         cout << "  maxtextsize      = " << (maxTextSizePt > 0 ? to_string(maxTextSizePt) : "off") << "\n";
         cout << "  textscale        = " << textScalePct << "%\n";
@@ -495,6 +575,8 @@ int main(int argc, char* argv[]) {
         cout << "  textshadow       = " << (textShadow > 0 ? to_string(textShadow) : "no") << "\n";
         cout << "  shadowmethod     = " << shadowMethod << "\n";
         cout << "  linespacing      = " << lineSpacing << "\n";
+        cout << "  textoffy         = " << textOffsetY << "\n";
+        cout << "  citeoffy         = " << citeOffsetY << "\n";
         ifstream check(CONFIG_FILE);
         if (check.good())
             cout << "\nConfig file: ./" << CONFIG_FILE << " (loaded)\n";
@@ -530,6 +612,7 @@ int main(int argc, char* argv[]) {
             "citeplacement    = " + citePlacement,
             "citebibleversion = " + string(citeBibleVersion ? "yes" : "no"),
             "citeshadow       = " + (citeShadow > 0 ? to_string(citeShadow) : string("no")),
+            "citealign        = " + citeAlign,
             "textsize         = " + to_string(textSizePt),
             "maxtextsize      = " + to_string(maxTextSizePt),
             "textscale        = " + to_string(textScalePct),
@@ -538,7 +621,9 @@ int main(int argc, char* argv[]) {
             "textpanelrounded = " + string(panelRounded ? "yes" : "no"),
             "textshadow       = " + (textShadow > 0 ? to_string(textShadow) : string("no")),
             "shadowmethod     = " + to_string(shadowMethod),
-            "linespacing      = " + to_string(lineSpacing)
+            "linespacing      = " + to_string(lineSpacing),
+            "textoffy         = " + to_string(textOffsetY),
+            "citeoffy         = " + to_string(citeOffsetY)
         };
         if (!writeSection(lines)) { cerr << "Error: could not write '" << CONFIG_FILE << "'.\n"; return 1; }
         cerr << "Saved [" << SECTION << "] to ./" << CONFIG_FILE << "\n";
@@ -601,7 +686,7 @@ int main(int argc, char* argv[]) {
                 cin >> answer;
                 if (answer == 'y' || answer == 'Y') {
                     string cmd = "curl -L \"" + bibleUrl + "\" -o \"" + bibleFile + "\"";
-                    if (system(cmd.c_str()) != 0) {
+                    if (runSystem(cmd) != 0) {
                         cerr << "Download failed. Please download manually:\n  " << bibleUrl << "\n";
                         return 1;
                     }
@@ -654,7 +739,19 @@ int main(int argc, char* argv[]) {
 
     // Citation: fixed point size, placed near the bottom edge.
     int citePt    = (citeSizeOvr > 0) ? citeSizeOvr : max(1, (int)(60 * scale * citeScalePct / 100.0)); // ~60pt at 1080p
-    int citeOffY  = max(20, (int)(55 * scale)); // pixels inward from bottom edge
+    int citeOffY  = max(0, max(20, (int)(55 * scale)) - citeOffsetY); // pixels inward from bottom edge
+    verseOffY    -= textOffsetY;   // positive textOffsetY moves verse down
+    int citeMarginX = (imgWidth - (int)(imgWidth * 0.896)) / 2; // matches verse left/right margin
+
+    // Gravity strings based on citealign (center/left/right) and placement (below/bottom).
+    // "below" uses Center/West/East; "bottom" uses South/SouthWest/SouthEast.
+    string citeGravityCenter = (citePlacement == "below") ? "Center" : "South";
+    string citeGravityLeft   = (citePlacement == "below") ? "West"   : "SouthWest";
+    string citeGravityRight  = (citePlacement == "below") ? "East"   : "SouthEast";
+    string citeGravity = (citeAlign == "left") ? citeGravityLeft
+                       : (citeAlign == "right") ? citeGravityRight
+                       : citeGravityCenter;
+    int citeX = (citeAlign == "center") ? 0 : citeMarginX;
 
     // Temp file for the intermediate verse layer PNG.
     string tmpLayer = outputFile + ".tmp_layer.png";
@@ -700,7 +797,7 @@ int main(int argc, char* argv[]) {
              << " caption:"       << quotedVerse
              << " -verbose info:";
         int autoFitSize = 0;
-        FILE* pipe = popen(qcmd.str().c_str(), "r");
+        FILE* pipe = runPopen(qcmd.str(), "r");
         if (pipe) {
             char buf[256];
             while (fgets(buf, sizeof(buf), pipe)) {
@@ -732,7 +829,7 @@ int main(int argc, char* argv[]) {
          << " -border " << borderW << "x" << borderH
          << " \"" << tmpLayer << "\"";
 
-    int ret1 = system(cmd1.str().c_str());
+    int ret1 = runSystem(cmd1.str());
     if (ret1 != 0) {
         cerr << "Error: verse layer generation failed.\n\n";
         cerr << "To list fonts or use a font by path:\n";
@@ -750,11 +847,11 @@ int main(int argc, char* argv[]) {
         int    opacity = (shadowMethod == 1) ? 80 : 100;
         ostringstream shadowCmd;
         shadowCmd << im << " \"" << tmpLayer << "\""
-                  << " \\( +clone -background black -shadow " << opacity << "x" << sigma
-                  << "+" << offset << "+" << offset << " \\)"
+                  << " " << LP << " +clone -background black -shadow " << opacity << "x" << sigma
+                  << "+" << offset << "+" << offset << " " << RP
                   << " +swap -background none -flatten"
                   << " \"" << tmpShadow << "\"";
-        if (system(shadowCmd.str().c_str()) == 0)
+        if (runSystem(shadowCmd.str()) == 0)
             activeLayer = tmpShadow;
     }
 
@@ -762,7 +859,7 @@ int main(int argc, char* argv[]) {
     int layerW = 0, layerH = 0;
     if (textPanelOpacity > 0 || (citeStyle != "none" && citePlacement == "below")) {
         string identCmd = im + " identify -format \"%wx%h\" \"" + tmpLayer + "\"";
-        FILE* pipe = popen(identCmd.c_str(), "r");
+        FILE* pipe = runPopen(identCmd, "r");
         if (pipe) {
             char buf[64] = {};
             fgets(buf, sizeof(buf), pipe);
@@ -789,17 +886,17 @@ int main(int argc, char* argv[]) {
 
         int cornerR = max(4, (int)(12 * scale));
         if (panelRounded) {
-            panelDraw << " \\( -size " << layerW << "x" << panelH
+            panelDraw << " " << LP << " -size " << layerW << "x" << panelH
                       << " xc:none -fill \"" << textPanelColor << "\""
                       << " -draw \"roundrectangle 0,0 " << (layerW-1) << "," << (panelH-1)
                       << " " << cornerR << "," << cornerR << "\""
                       << " -alpha set -channel Alpha -evaluate multiply "
-                      << (textPanelOpacity / 100.0) << " +channel \\)";
+                      << (textPanelOpacity / 100.0) << " +channel " << RP;
         } else {
-            panelDraw << " \\( -size " << layerW << "x" << panelH
+            panelDraw << " " << LP << " -size " << layerW << "x" << panelH
                       << " xc:\"" << textPanelColor << "\""
                       << " -alpha set -channel Alpha -evaluate multiply "
-                      << (textPanelOpacity / 100.0) << " +channel \\)";
+                      << (textPanelOpacity / 100.0) << " +channel " << RP;
         }
         panelDraw << " -gravity Center"
                   << (panelOffY >= 0 ? " -geometry +0-" : " -geometry +0+") << abs(panelOffY)
@@ -811,17 +908,17 @@ int main(int argc, char* argv[]) {
             int citePanelH   = citePt + 2 * citePad;
             int citePanelOff = max(0, citeOffY - citePad + (int)(4 * scale));
             if (panelRounded) {
-                panelDraw << " \\( -size " << layerW << "x" << citePanelH
+                panelDraw << " " << LP << " -size " << layerW << "x" << citePanelH
                           << " xc:none -fill \"" << textPanelColor << "\""
                           << " -draw \"roundrectangle 0,0 " << (layerW-1) << "," << (citePanelH-1)
                           << " " << cornerR << "," << cornerR << "\""
                           << " -alpha set -channel Alpha -evaluate multiply "
-                          << (textPanelOpacity / 100.0) << " +channel \\)";
+                          << (textPanelOpacity / 100.0) << " +channel " << RP;
             } else {
-                panelDraw << " \\( -size " << layerW << "x" << citePanelH
+                panelDraw << " " << LP << " -size " << layerW << "x" << citePanelH
                           << " xc:\"" << textPanelColor << "\""
                           << " -alpha set -channel Alpha -evaluate multiply "
-                          << (textPanelOpacity / 100.0) << " +channel \\)";
+                          << (textPanelOpacity / 100.0) << " +channel " << RP;
             }
             panelDraw << " -gravity South -geometry +0+" << citePanelOff
                       << " -composite";
@@ -837,28 +934,28 @@ int main(int argc, char* argv[]) {
 
         if (citePlacement == "below") {
             int visibleGap = max(8, (int)(16 * scale));
-            int offset     = -verseOffY + layerH / 2 + visibleGap + citePt * 3 / 4;
+            int offset     = -verseOffY + layerH / 2 + visibleGap + citePt * 3 / 4 + citeOffsetY;
 
             if (citeShadow > 0) {
                 int shadowY = offset + shadowOff;
                 if (shadowMethod == 1) {
-                    citeAnnot << " \\( -size " << imgWidth << "x" << imgHeight << " xc:none"
+                    citeAnnot << " " << LP << " -size " << imgWidth << "x" << imgHeight << " xc:none"
                               << " -fill black"
                               << " -font \"" << activeCiteFont << "\""
                               << " -pointsize " << citePt
-                              << " -gravity Center"
-                              << " -annotate +" << shadowOff
+                              << " -gravity " << citeGravity
+                              << " -annotate +" << (citeX + shadowOff)
                               << (shadowY >= 0 ? "+" : "-") << abs(shadowY)
                               << " " << quotedCitation
                               << " -blur 0x" << citeSigma
-                              << " -channel Alpha -evaluate multiply 0.8 +channel \\)"
+                              << " -channel Alpha -evaluate multiply 0.8 +channel " << RP
                               << " -composite";
                 } else {
                     citeAnnot << " -fill black"
                               << " -font \"" << activeCiteFont << "\""
                               << " -pointsize " << citePt
-                              << " -gravity Center"
-                              << " -annotate +" << shadowOff
+                              << " -gravity " << citeGravity
+                              << " -annotate +" << (citeX + shadowOff)
                               << (shadowY >= 0 ? "+" : "-") << abs(shadowY)
                               << " " << quotedCitation;
                 }
@@ -867,30 +964,30 @@ int main(int argc, char* argv[]) {
             citeAnnot << " -fill \"" << citeColor << "\""
                       << " -font \"" << activeCiteFont << "\""
                       << " -pointsize " << citePt
-                      << " -gravity Center"
-                      << (offset >= 0 ? " -annotate +0+" : " -annotate +0-")
-                      << abs(offset)
+                      << " -gravity " << citeGravity
+                      << (offset >= 0 ? " -annotate +" : " -annotate +") << citeX
+                      << (offset >= 0 ? "+" : "-") << abs(offset)
                       << " " << quotedCitation;
         } else {
             if (citeShadow > 0) {
                 int shadowSouthY = max(0, citeOffY - shadowOff);
                 if (shadowMethod == 1) {
-                    citeAnnot << " \\( -size " << imgWidth << "x" << imgHeight << " xc:none"
+                    citeAnnot << " " << LP << " -size " << imgWidth << "x" << imgHeight << " xc:none"
                               << " -fill black"
                               << " -font \"" << activeCiteFont << "\""
                               << " -pointsize " << citePt
-                              << " -gravity South"
-                              << " -annotate +" << shadowOff << "+" << shadowSouthY
+                              << " -gravity " << citeGravity
+                              << " -annotate +" << (citeX + shadowOff) << "+" << shadowSouthY
                               << " " << quotedCitation
                               << " -blur 0x" << citeSigma
-                              << " -channel Alpha -evaluate multiply 0.8 +channel \\)"
+                              << " -channel Alpha -evaluate multiply 0.8 +channel " << RP
                               << " -composite";
                 } else {
                     citeAnnot << " -fill black"
                               << " -font \"" << activeCiteFont << "\""
                               << " -pointsize " << citePt
-                              << " -gravity South"
-                              << " -annotate +" << shadowOff << "+" << shadowSouthY
+                              << " -gravity " << citeGravity
+                              << " -annotate +" << (citeX + shadowOff) << "+" << shadowSouthY
                               << " " << quotedCitation;
                 }
             }
@@ -898,8 +995,8 @@ int main(int argc, char* argv[]) {
             citeAnnot << " -fill \"" << citeColor << "\""
                       << " -font \"" << activeCiteFont << "\""
                       << " -pointsize " << citePt
-                      << " -gravity South"
-                      << " -annotate +0+" << citeOffY
+                      << " -gravity " << citeGravity
+                      << " -annotate +" << citeX << "+" << citeOffY
                       << " " << quotedCitation;
         }
     }
@@ -917,7 +1014,7 @@ int main(int argc, char* argv[]) {
              << panelDraw.str()
              << " \"" << activeLayer << "\""
              << " -gravity Center"
-             << " -geometry +0-" << verseOffY
+             << " -geometry +0" << (verseOffY >= 0 ? "-" : "+") << abs(verseOffY)
              << " -composite"
              << citeAnnot.str()
              << " \"" << outputFile << "\"";
@@ -933,13 +1030,13 @@ int main(int argc, char* argv[]) {
              << panelDraw.str()
              << " \"" << activeLayer << "\""
              << " -gravity Center"
-             << " -geometry +0-" << verseOffY
+             << " -geometry +0" << (verseOffY >= 0 ? "-" : "+") << abs(verseOffY)
              << " -composite"
              << citeAnnot.str()
              << " \"" << outputFile << "\"";
     }
 
-    int ret2 = system(cmd2.str().c_str());
+    int ret2 = runSystem(cmd2.str());
 
     remove(tmpLayer.c_str());
     if (textShadow > 0) remove(tmpShadow.c_str());

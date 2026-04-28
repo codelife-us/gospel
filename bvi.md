@@ -209,6 +209,27 @@ Adjust the amount of space between lines of verse text with `--linespacing`:
 
 Positive values increase the gap; negative values reduce it. The default is `0` (no adjustment). This passes `-interline-spacing N` to ImageMagick's `caption:` operator.
 
+## Position Offsets
+
+Fine-tune the vertical position of the verse text and citation independently.
+
+**`--textoffy=N`** — shift the verse text block vertically. Positive moves it down, negative moves it up.
+
+```bash
+./bvi "John 3:16" --textoffy=30    # move verse text 30px down
+./bvi "John 3:16" --textoffy=-20   # move verse text 20px up
+```
+
+**`--citeoffy=N`** — shift the citation vertically. For `bottom` placement, positive moves it closer to the bottom edge; for `below` placement, positive moves it further from the verse block.
+
+```bash
+./bvi "John 3:16" --citeoffy=20    # push citation closer to bottom
+./bvi "John 3:16" --citeoffy=-10   # pull citation away from bottom
+./bvi "John 3:16" --citeplacement=below --citeoffy=10   # add extra gap below verse
+```
+
+Both default to `0` (no adjustment).
+
 ## Citation
 
 ### Style
@@ -276,6 +297,22 @@ Add a drop shadow behind the citation text:
 ```
 
 The `N` value ranges from 1 (lightest) to 10 (heaviest). Shadow style is controlled by `--shadowmethod` (see above).
+
+### Alignment
+
+Control the horizontal alignment of the citation text with `--citealign`:
+
+| Value | Description |
+|---|---|
+| `center` (default) | Citation centered horizontally |
+| `left` | Citation left-aligned, inset to match the verse text margin |
+| `right` | Citation right-aligned, inset to match the verse text margin |
+
+```bash
+./bvi "John 3:16" --citealign=left
+./bvi "John 3:16" --citealign=right
+./bvi "John 3:16" --citealign=center   # default
+```
 
 ### Size
 
@@ -371,6 +408,7 @@ citestyle        = dash
 citeplacement    = bottom
 citebibleversion = yes
 citeshadow       = no
+citealign        = center
 textsize         = 0
 maxtextsize      = 0
 textscale        = 100
@@ -379,9 +417,11 @@ textpanelcolor   = black
 textshadow       = no
 shadowmethod     = 1
 linespacing      = 0
+textoffy         = 0
+citeoffy         = 0
 ```
 
-Supported keys: `bv`, `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `citecolor`, `citefont`, `quotes`, `citesize`, `citescale`, `citestyle`, `citeplacement`, `citebibleversion`, `citeshadow`, `textsize`, `maxtextsize`, `textscale`, `textpanel`, `textpanelcolor`, `textshadow`, `shadowmethod`, `linespacing`
+Supported keys: `bv`, `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `citecolor`, `citefont`, `quotes`, `citesize`, `citescale`, `citestyle`, `citeplacement`, `citebibleversion`, `citeshadow`, `citealign`, `textsize`, `maxtextsize`, `textscale`, `textpanel`, `textpanelcolor`, `textshadow`, `shadowmethod`, `linespacing`, `textoffy`, `citeoffy`
 
 ## Bible Translations
 
@@ -417,6 +457,9 @@ If a Bible translation file is not found, the program will prompt you to downloa
 | Cite style | `dash` / `parens` / `plain` / `none` |
 | Cite placement | `bottom` (fixed near edge) or `below` (just under verse text) |
 | Cite shadow (0–10) | Intensity of drop shadow behind citation text; 0 = off |
+| Cite align | `center` / `left` / `right` |
+| Text off Y | Nudge verse text up (negative) or down (positive) |
+| Cite off Y | Nudge citation toward bottom (positive) or away (negative) |
 | Shadow method | `1` = soft Gaussian blur, `2` = hard offset copy |
 | Quotes checkbox | Toggle curly quotes |
 
