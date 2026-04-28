@@ -71,6 +71,7 @@ THEME_KEYS = [
     ("citeplacement",    "citeplacement_var",     "str",  "bottom"),
     ("citeshadow",       "citeshadow_var",         "str",  "0"),
     ("citealign",        "citealign_var",          "str",  "center"),
+    ("citepanel",        "citepanel_var",          "str",  "independent"),
     ("textoffy",         "textoffy_var",           "str",  "0"),
     ("citeoffy",         "citeoffy_var",           "str",  "0"),
     ("citescale",        "citescale_var",         "str",  ""),
@@ -78,6 +79,7 @@ THEME_KEYS = [
     ("textsize",         "textsize_var",          "str",  ""),
     ("textscale",        "textscale_var",         "str",  ""),
     ("textpanel",        "textpanel_var",         "str",  ""),
+    ("textpanelcolor",   "textpanelcolor_var",    "str",  "black"),
     ("quotes",           "quotes_var",            "bool", "no"),
     ("textshadow",       "textshadow_var",        "str",  "0"),
     ("shadowmethod",     "shadowmethod_var",      "str",  "1"),
@@ -284,6 +286,7 @@ class BviView:
         _cs = _cfg("citeshadow", "0")
         self.citeshadow_var    = tk.StringVar(value="5" if _cs == "yes" else "0" if _cs == "no" else _cs)
         self.citealign_var     = tk.StringVar(value=_cfg("citealign", "center"))
+        self.citepanel_var     = tk.StringVar(value=_cfg("citepanel", "independent"))
         self.textoffy_var      = tk.StringVar(value=_cfg("textoffy", "0"))
         self.citeoffy_var      = tk.StringVar(value=_cfg("citeoffy", "0"))
         self.quotes_var     = tk.BooleanVar(value=(_cfg("quotes", "no") == "yes"))
@@ -297,6 +300,7 @@ class BviView:
         self.shadowmethod_var  = tk.StringVar(value=_cfg("shadowmethod", "1"))
         self.linespacing_var   = tk.StringVar(value=_cfg("linespacing", "0"))
         self.textpanel_var     = tk.StringVar(value=_cfg("textpanel", ""))
+        self.textpanelcolor_var = tk.StringVar(value=_cfg("textpanelcolor", "black"))
         self.panelrounded_var  = tk.BooleanVar(value=_cfg("textpanelrounded", "no") == "yes")
         self.citebibleversion_var = tk.BooleanVar(
             value=_cfg("citebibleversion", "yes") not in ("no", "false"))
@@ -435,60 +439,66 @@ class BviView:
                      state="readonly").grid(row=11, column=3, sticky="w", **pad)
         self.citealign_var.trace_add("write", lambda *_: self._schedule(0))
 
-        # Cite Y offset
+        # Cite panel mode / Cite Y offset
+        tk.Label(f, text="Cite panel:").grid(row=12, column=0, sticky="e", **pad)
+        ttk.Combobox(f, textvariable=self.citepanel_var, width=11,
+                     values=("independent", "coverbottom", "none"),
+                     state="readonly").grid(row=12, column=1, sticky="w", **pad)
+        self.citepanel_var.trace_add("write", lambda *_: self._schedule(0))
         tk.Label(f, text="Cite off Y:").grid(row=12, column=2, sticky="e", **pad)
         tk.Entry(f, textvariable=self.citeoffy_var, width=5).grid(row=12, column=3, sticky="w", **pad)
         self.citeoffy_var.trace_add("write", lambda *_: self._schedule(400))
 
         # Colors
-        self._make_color_row(f, "BG:",        self.bg_var,        13)
-        self._make_color_row(f, "Text color:", self.textcolor_var, 14)
-        self._make_color_row(f, "Cite color:", self.citecolor_var, 15)
+        self._make_color_row(f, "BG:",             self.bg_var,             13)
+        self._make_color_row(f, "Text color:",      self.textcolor_var,      14)
+        self._make_color_row(f, "Text panel color:", self.textpanelcolor_var, 15)
+        self._make_color_row(f, "Cite color:",      self.citecolor_var,      16)
 
         # BG Photo
-        tk.Label(f, text="BG photo:").grid(row=16, column=0, sticky="e", **pad)
+        tk.Label(f, text="BG photo:").grid(row=17, column=0, sticky="e", **pad)
         photo_entry = tk.Entry(f, textvariable=self.bgphoto_var, width=28)
-        photo_entry.grid(row=16, column=1, columnspan=2, sticky="ew", **pad)
+        photo_entry.grid(row=17, column=1, columnspan=2, sticky="ew", **pad)
         self.bgphoto_var.trace_add("write", lambda *_: self._schedule(400))
         tk.Button(f, text="…", padx=2,
-                  command=self._browse_bgphoto).grid(row=16, column=3, sticky="w", padx=(0, 6), pady=3)
+                  command=self._browse_bgphoto).grid(row=17, column=3, sticky="w", padx=(0, 6), pady=3)
 
         # Dim / Text shadow
-        tk.Label(f, text="Dim %:").grid(row=17, column=0, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.dim_var, width=5).grid(row=17, column=1, sticky="w", **pad)
+        tk.Label(f, text="Dim %:").grid(row=18, column=0, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.dim_var, width=5).grid(row=18, column=1, sticky="w", **pad)
         self.dim_var.trace_add("write", lambda *_: self._schedule(400))
-        tk.Label(f, text="Text shadow (0-10):").grid(row=17, column=2, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.textshadow_var, width=3).grid(row=17, column=3, sticky="w", **pad)
+        tk.Label(f, text="Text shadow (0-10):").grid(row=18, column=2, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.textshadow_var, width=3).grid(row=18, column=3, sticky="w", **pad)
         self.textshadow_var.trace_add("write", lambda *_: self._schedule(400))
 
         # Shadow method
-        tk.Label(f, text="Shadow method:").grid(row=18, column=0, sticky="e", **pad)
+        tk.Label(f, text="Shadow method:").grid(row=19, column=0, sticky="e", **pad)
         sm_frame = tk.Frame(f)
-        sm_frame.grid(row=18, column=1, columnspan=3, sticky="w")
+        sm_frame.grid(row=19, column=1, columnspan=3, sticky="w")
         for val, label in (("1", "1 – Soft (Gaussian)"), ("2", "2 – Hard (copy)")):
             tk.Radiobutton(sm_frame, text=label, variable=self.shadowmethod_var, value=val,
                            command=lambda: self._schedule(0)).pack(side="left")
 
         # Text panel opacity + rounded, line spacing
-        tk.Label(f, text="Text panel %:").grid(row=19, column=0, sticky="e", **pad)
+        tk.Label(f, text="Text panel %:").grid(row=20, column=0, sticky="e", **pad)
         tp_frame = tk.Frame(f)
-        tp_frame.grid(row=19, column=1, sticky="w", **pad)
+        tp_frame.grid(row=20, column=1, sticky="w", **pad)
         tk.Entry(tp_frame, textvariable=self.textpanel_var, width=5).pack(side="left")
         tk.Checkbutton(tp_frame, text="Rounded", variable=self.panelrounded_var,
                        command=lambda: self._schedule(0)).pack(side="left", padx=(4, 0))
         self.textpanel_var.trace_add("write", lambda *_: self._schedule(400))
-        tk.Label(f, text="Line spacing:").grid(row=19, column=2, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.linespacing_var, width=5).grid(row=19, column=3, sticky="w", **pad)
+        tk.Label(f, text="Line spacing:").grid(row=20, column=2, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.linespacing_var, width=5).grid(row=20, column=3, sticky="w", **pad)
         self.linespacing_var.trace_add("write", lambda *_: self._schedule(400))
 
         # Themes
         self.theme_var = tk.StringVar()
-        tk.Label(f, text="Theme:").grid(row=20, column=0, sticky="e", **pad)
+        tk.Label(f, text="Theme:").grid(row=21, column=0, sticky="e", **pad)
         self.theme_cb = ttk.Combobox(f, textvariable=self.theme_var, state="readonly", width=18)
-        self.theme_cb.grid(row=20, column=1, sticky="ew", **pad)
+        self.theme_cb.grid(row=21, column=1, sticky="ew", **pad)
         self.theme_cb.bind("<<ComboboxSelected>>", lambda _: self._on_theme_select())
         tbf = tk.Frame(f)
-        tbf.grid(row=20, column=2, columnspan=2, sticky="w", padx=(4, 6), pady=3)
+        tbf.grid(row=21, column=2, columnspan=2, sticky="w", padx=(4, 6), pady=3)
         tk.Button(tbf, text="Save…",   padx=3, command=self._save_theme_dialog).pack(side="left", padx=(0, 3))
         tk.Button(tbf, text="Delete",  padx=3, command=self._delete_theme).pack(side="left", padx=(0, 3))
         tk.Button(tbf, text="Default", padx=3, command=self._make_default_theme).pack(side="left")
@@ -496,13 +506,13 @@ class BviView:
 
         # Preview size / Copy bvi / Save image
         tk.Checkbutton(f, text="Preview at half size", variable=self.half_size_var,
-                       command=self._on_half_size_toggle).grid(row=21, column=0, columnspan=2, sticky="w", **pad)
-        tk.Button(f, text="Copy bvi", command=self._copy_bvi_cmd).grid(row=21, column=2, sticky="e", pady=3)
-        tk.Button(f, text="Save Image…", command=self._save_image).grid(row=21, column=3, sticky="e", padx=(0, 8), pady=3)
+                       command=self._on_half_size_toggle).grid(row=22, column=0, columnspan=2, sticky="w", **pad)
+        tk.Button(f, text="Copy bvi", command=self._copy_bvi_cmd).grid(row=22, column=2, sticky="e", pady=3)
+        tk.Button(f, text="Save Image…", command=self._save_image).grid(row=22, column=3, sticky="e", padx=(0, 8), pady=3)
 
         # Status
         tk.Label(f, textvariable=self.status_var, fg="gray45",
-                 anchor="w", width=46).grid(row=22, column=0, columnspan=4, **pad)
+                 anchor="w", width=46).grid(row=23, column=0, columnspan=4, **pad)
 
     def _make_color_row(self, parent, label: str, var: tk.StringVar, row: int):
         pad = dict(padx=6, pady=3)
@@ -1032,12 +1042,16 @@ class BviView:
         if re.fullmatch(r'\d+', tp):
             cmd.append(f"--textpanel={tp}")
         cmd.append("--textpanelrounded" if self.panelrounded_var.get() else "--no-textpanelrounded")
+        tpc = self.textpanelcolor_var.get().strip()
+        if tpc and tpc != "black":
+            cmd.append(f"--textpanelcolor={tpc}")
         ls = self.linespacing_var.get().strip()
         if re.fullmatch(r'-?\d+', ls) and ls != "0":
             cmd.append(f"--linespacing={ls}")
         cmd.append(f"--citebibleversion={'yes' if self.citebibleversion_var.get() else 'no'}")
         cmd.append(f"--citeplacement={self.citeplacement_var.get()}")
         cmd.append(f"--citealign={self.citealign_var.get()}")
+        cmd.append(f"--citepanel={self.citepanel_var.get()}")
         toffy = self.textoffy_var.get().strip()
         if re.fullmatch(r'-?\d+', toffy) and toffy != "0":
             cmd.append(f"--textoffy={toffy}")

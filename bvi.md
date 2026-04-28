@@ -160,7 +160,19 @@ A semi-transparent colored rectangle drawn behind the verse text block improves 
 **Panel and citation placement:**
 
 - `--citeplacement=below` — the panel automatically extends downward to enclose the citation as well as the verse text.
-- `--citeplacement=bottom` (default) — the main panel covers the verse text, and a separate narrow panel of the same color and opacity is drawn behind the citation at the bottom of the image.
+- `--citeplacement=bottom` (default) — behavior depends on `--citepanel`:
+
+| `--citepanel` value | Effect |
+|---|---|
+| `independent` (default) | Main panel covers verse text; a separate narrow panel of the same color and opacity is drawn behind the citation at the bottom |
+| `coverbottom` | Main panel stretches downward from the verse text all the way to cover the citation at the bottom — one continuous panel |
+| `none` | Main panel covers only the verse text; no panel behind the citation |
+
+```bash
+./bvi "John 3:16" --bgphoto=photo.jpg --textpanel=60 --citepanel=coverbottom
+./bvi "John 3:16" --bgphoto=photo.jpg --textpanel=60 --citepanel=none
+./bvi "John 3:16" --bgphoto=photo.jpg --textpanel=60 --citepanel=independent  # default
+```
 
 ### Shadow
 
@@ -409,6 +421,7 @@ citeplacement    = bottom
 citebibleversion = yes
 citeshadow       = no
 citealign        = center
+citepanel        = independent
 textsize         = 0
 maxtextsize      = 0
 textscale        = 100
@@ -421,7 +434,7 @@ textoffy         = 0
 citeoffy         = 0
 ```
 
-Supported keys: `bv`, `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `citecolor`, `citefont`, `quotes`, `citesize`, `citescale`, `citestyle`, `citeplacement`, `citebibleversion`, `citeshadow`, `citealign`, `textsize`, `maxtextsize`, `textscale`, `textpanel`, `textpanelcolor`, `textshadow`, `shadowmethod`, `linespacing`, `textoffy`, `citeoffy`
+Supported keys: `bv`, `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `citecolor`, `citefont`, `quotes`, `citesize`, `citescale`, `citestyle`, `citeplacement`, `citebibleversion`, `citeshadow`, `citealign`, `citepanel`, `textsize`, `maxtextsize`, `textscale`, `textpanel`, `textpanelcolor`, `textshadow`, `shadowmethod`, `linespacing`, `textoffy`, `citeoffy`
 
 ## Bible Translations
 
@@ -458,6 +471,7 @@ If a Bible translation file is not found, the program will prompt you to downloa
 | Cite placement | `bottom` (fixed near edge) or `below` (just under verse text) |
 | Cite shadow (0–10) | Intensity of drop shadow behind citation text; 0 = off |
 | Cite align | `center` / `left` / `right` |
+| Cite panel | `independent` / `coverbottom` / `none` — how the text panel relates to the bottom citation |
 | Text off Y | Nudge verse text up (negative) or down (positive) |
 | Cite off Y | Nudge citation toward bottom (positive) or away (negative) |
 | Shadow method | `1` = soft Gaussian blur, `2` = hard offset copy |

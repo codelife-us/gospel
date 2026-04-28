@@ -289,6 +289,10 @@ void printHelp() {
     cout << "  --citeshadow[=N]        Add drop shadow behind citation text; N=1-10 intensity (default 5)\n";
     cout << "  --no-citeshadow         Remove citation drop shadow (default)\n";
     cout << "  --citealign=ALIGN       center (default) | left | right\n";
+    cout << "  --citepanel=MODE        When --textpanel and --citeplacement=bottom are both active:\n";
+    cout << "                          independent (default): separate narrow panel behind citation\n";
+    cout << "                          coverbottom: extend main text panel down to cover citation\n";
+    cout << "                          none: no panel behind citation\n";
     cout << "  --textsize=N            Force verse font to exactly N points (absolute; cannot combine with --textscale)\n";
     cout << "  --maxtextsize=N         Cap auto-fit verse font at N points (e.g. 140 for typical verses at 1080p); overrides --textsize\n";
     cout << "  --textscale=PCT         Scale verse text area to PCT% of default (e.g. 75); cannot combine with --textsize/--maxtextsize\n";
@@ -305,7 +309,7 @@ void printHelp() {
     cout << "Config file (.luminaverse in current directory or $HOME, [bvi] section):\n";
     cout << "  --saveconfig            Save current settings to .luminaverse [bvi] as new defaults\n";
     cout << "  --showconfig            Print current effective settings and exit\n\n";
-    cout << "  Supported keys in [bvi]:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  citealign  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow  shadowmethod  linespacing  textoffy  citeoffy\n\n";
+    cout << "  Supported keys in [bvi]:  bv  width  height  font  bg  bgphoto  dim  textcolor  citecolor  citefont  quotes  citesize  citescale  citestyle  citeplacement  citebibleversion  citeshadow  citealign  citepanel  textsize  maxtextsize  textscale  textpanel  textpanelcolor  textpanelrounded  textshadow  shadowmethod  linespacing  textoffy  citeoffy\n\n";
     cout << "Requires:\n";
     cout << "  ImageMagick  —  brew install imagemagick\n\n";
     cout << "Examples:\n";
@@ -402,6 +406,7 @@ int main(int argc, char* argv[]) {
     };
     int citeShadow       = parseShadow(cfgGet(cfg, "citeshadow", "no"));
     string citeAlign     = cfgGet(cfg, "citealign",     "center");       // center | left | right
+    string citePanel     = cfgGet(cfg, "citepanel",     "independent");  // independent | coverbottom | none
     int textSizePt       = stoi(cfgGet(cfg, "textsize",      "0"));      // 0 = off; absolute fixed size
     int maxTextSizePt    = stoi(cfgGet(cfg, "maxtextsize",   "0"));      // 0 = off; cap auto-fit
     int textScalePct     = stoi(cfgGet(cfg, "textscale",     "100"));    // 100 = fill canvas
@@ -473,6 +478,8 @@ int main(int argc, char* argv[]) {
             citeShadow = 0;
         } else if (arg.find("--citealign=") == 0) {
             citeAlign = arg.substr(12);
+        } else if (arg.find("--citepanel=") == 0) {
+            citePanel = arg.substr(12);
         } else if (arg.find("--textsize=") == 0) {
             textSizePt = stoi(arg.substr(11));
         } else if (arg.find("--maxtextsize=") == 0) {
@@ -544,6 +551,10 @@ int main(int argc, char* argv[]) {
         cerr << "Error: --citealign must be center, left, or right.\n";
         return 1;
     }
+    if (citePanel != "independent" && citePanel != "coverbottom" && citePanel != "none") {
+        cerr << "Error: --citepanel must be independent, coverbottom, or none.\n";
+        return 1;
+    }
 
     // ── --showconfig: print effective settings and exit ───────────────────
     if (showConfig) {
@@ -566,6 +577,7 @@ int main(int argc, char* argv[]) {
         cout << "  citebibleversion = " << (citeBibleVersion ? "yes" : "no") << "\n";
         cout << "  citeshadow       = " << (citeShadow > 0 ? to_string(citeShadow) : "no") << "\n";
         cout << "  citealign        = " << citeAlign << "\n";
+        cout << "  citepanel        = " << citePanel << "\n";
         cout << "  textsize         = " << (textSizePt    > 0 ? to_string(textSizePt)    : "off") << "\n";
         cout << "  maxtextsize      = " << (maxTextSizePt > 0 ? to_string(maxTextSizePt) : "off") << "\n";
         cout << "  textscale        = " << textScalePct << "%\n";
@@ -613,6 +625,7 @@ int main(int argc, char* argv[]) {
             "citebibleversion = " + string(citeBibleVersion ? "yes" : "no"),
             "citeshadow       = " + (citeShadow > 0 ? to_string(citeShadow) : string("no")),
             "citealign        = " + citeAlign,
+            "citepanel        = " + citePanel,
             "textsize         = " + to_string(textSizePt),
             "maxtextsize      = " + to_string(maxTextSizePt),
             "textscale        = " + to_string(textScalePct),
@@ -876,12 +889,20 @@ int main(int argc, char* argv[]) {
 
         if (citeStyle != "none" && citePlacement == "below") {
             // Extend the panel down to enclose the citation.
-            // visibleGap = gap from verse layer bottom to citation text TOP.
             int visibleGap = max(8,  (int)(16 * scale));
             int bottomPad  = max(12, (int)(28 * scale));
             int extraH     = visibleGap + citePt + bottomPad;
             panelH   += extraH;
-            panelOffY = verseOffY - extraH / 2;  // shift center down; may go negative (below canvas center)
+            panelOffY = verseOffY - extraH / 2;  // may go negative (below canvas center)
+        } else if (citeStyle != "none" && citePlacement == "bottom" && citePanel == "coverbottom") {
+            // Stretch the main panel downward so it reaches the citation near the bottom edge.
+            // Keep the panel's top edge fixed; extend the bottom to cover the citation.
+            int citePad     = max(6, (int)(14 * scale));
+            int panelTopY   = imgHeight / 2 - panelOffY - panelH / 2;   // from image top
+            int citeBotY    = imgHeight - citeOffY + citePad;             // citation bottom from image top
+            int newPanelH   = max(panelH, citeBotY - panelTopY);
+            panelOffY       = imgHeight / 2 - (panelTopY + newPanelH / 2);
+            panelH          = newPanelH;
         }
 
         int cornerR = max(4, (int)(12 * scale));
@@ -902,11 +923,39 @@ int main(int argc, char* argv[]) {
                   << (panelOffY >= 0 ? " -geometry +0-" : " -geometry +0+") << abs(panelOffY)
                   << " -composite";
 
-        // For bottom citation placement, add a separate narrow panel behind the citation.
-        if (citeStyle != "none" && citePlacement == "bottom") {
-            int citePad      = max(6, (int)(14 * scale));
-            int citePanelH   = citePt + 2 * citePad;
-            int citePanelOff = max(0, citeOffY - citePad + (int)(4 * scale));
+        // Independent mode: separate narrow panel behind the bottom citation.
+        if (citeStyle != "none" && citePlacement == "bottom" && citePanel == "independent") {
+            int citePad = max(6, (int)(14 * scale));
+            string activeCiteFontI = citeFont.empty() ? font : citeFont;
+
+            // Measure actual rendered text bounds so the panel aligns to visible pixels,
+            // not to the annotation baseline (which varies widely by font).
+            int textBotFB = citeOffY;            // fallback: annotation offset ≈ text bottom
+            int textTopFB = citeOffY + citePt;   // fallback: assume text fills citePt height
+            {
+                ostringstream meas;
+                meas << im
+                     << " -size " << imgWidth << "x" << imgHeight
+                     << " xc:none -fill white"
+                     << " -font \"" << activeCiteFontI << "\""
+                     << " -pointsize " << citePt
+                     << " -gravity " << citeGravity
+                     << " -annotate +" << citeX << "+" << citeOffY
+                     << " " << quotedCitation
+                     << " -trim"
+                     << " -format \"%[fx:" << imgHeight << "-page.y-h] %[fx:" << imgHeight << "-page.y]\""
+                     << " info:";
+                FILE* pipe = runPopen(meas.str(), "r");
+                if (pipe) {
+                    int b = 0, t = 0;
+                    if (fscanf(pipe, "%d %d", &b, &t) == 2 && t > b && b >= 0)
+                    { textBotFB = b; textTopFB = t; }
+                    pclose(pipe);
+                }
+            }
+            int citePanelH   = (textTopFB - textBotFB) + 2 * citePad;
+            int citePanelOff = max(0, textBotFB - citePad);
+
             if (panelRounded) {
                 panelDraw << " " << LP << " -size " << layerW << "x" << citePanelH
                           << " xc:none -fill \"" << textPanelColor << "\""
