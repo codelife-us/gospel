@@ -672,99 +672,124 @@ class BviView:
             save_bvilive_state(self._bvilive_path, self._bvilive_state)
 
     def _browse_font(self):
-        path = self._pick_font_file("Select font file", self.font_var.get())
+        path = self._font_list_picker(self.font_var.get())
         if path:
             self.font_var.set(path)
 
     def _browse_citefont(self):
-        path = self._pick_font_file("Select citation font file",
-                                    self.citefont_var.get() or self.font_var.get())
+        path = self._font_list_picker(self.citefont_var.get() or self.font_var.get())
         if path:
             self.citefont_var.set(path)
 
-    def _pick_font_file(self, title: str, current: str = "") -> str:
-        """Font file picker. On Windows, falls back to a custom dialog for C:\\Windows\\Fonts."""
-        cur_dir = ""
-        if current:
-            d = os.path.dirname(current)
-            if os.path.isdir(d):
-                cur_dir = d
+    def _font_list_picker(self, current: str = "") -> str:
+        """Searchable font picker scanning all standard font directories."""
         if sys.platform == "win32":
             win_fonts = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
-            init_dir = cur_dir if cur_dir else win_fonts
+            dirs = [win_fonts]
         else:
-            init_dir = cur_dir if cur_dir else os.path.expanduser("~")
-
-        path = filedialog.askopenfilename(
-            parent=self.root,
-            title=title,
-            initialdir=init_dir,
-            filetypes=[("Font files", "*.ttf *.otf *.ttc"),
-                       ("All files", "*.*")])
-
-        # On Windows, if nothing was selected and C:\Windows\Fonts is accessible,
-        # offer a custom listbox picker that reads fonts directly via os.listdir,
-        # bypassing the shell virtual-folder issue.
-        if not path and sys.platform == "win32" and os.path.isdir(win_fonts):
-            path = self._win_fonts_picker(title, win_fonts, current)
-
-        return path
-
-    def _win_fonts_picker(self, title: str, fonts_dir: str, current: str = "") -> str:
-        """Custom font browser using os.listdir — works around the Windows Fonts shell namespace."""
+            dirs = [
+                str(Path.home() / "Library" / "Fonts"),
+                "/Library/Fonts",
+                "/System/Library/Fonts",
+            ]
         exts = {".ttf", ".otf", ".ttc"}
-        try:
-            files = sorted(
-                f for f in os.listdir(fonts_dir)
-                if os.path.splitext(f)[1].lower() in exts
-            )
-        except OSError:
-            return ""
-        if not files:
+        labels = {
+            str(Path.home() / "Library" / "Fonts"): "Personal",
+            "/Library/Fonts":                         "System",
+            "/System/Library/Fonts":                  "Built-in",
+        }
+        entries: list = []
+        for d in dirs:
+            label = labels.get(d, os.path.basename(d))
+            try:
+                for name in sorted(os.listdir(d), key=str.lower):
+                    if os.path.splitext(name)[1].lower() in exts:
+                        display = os.path.splitext(name)[0]
+                        entries.append((display, os.path.join(d, name), label))
+            except OSError:
+                pass
+        entries.sort(key=lambda x: x[0].lower())
+        if not entries:
             return ""
 
         dlg = tk.Toplevel(self.root)
-        dlg.title(title)
+        dlg.title("Select Font")
         dlg.grab_set()
         dlg.resizable(True, True)
-
         result: list = []
 
         frame = ttk.Frame(dlg, padding=8)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text=fonts_dir, foreground="gray").pack(anchor="w")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
 
+        # Search bar
+        sf = ttk.Frame(frame)
+        sf.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        sf.columnconfigure(1, weight=1)
+        ttk.Label(sf, text="Search:").grid(row=0, column=0, padx=(0, 6))
+        search_var = tk.StringVar()
+        search_entry = ttk.Entry(sf, textvariable=search_var)
+        search_entry.grid(row=0, column=1, sticky="ew")
+
+        # Listbox
         lbf = ttk.Frame(frame)
-        lbf.pack(fill="both", expand=True, pady=(4, 4))
+        lbf.grid(row=1, column=0, sticky="nsew")
+        lbf.columnconfigure(0, weight=1)
+        lbf.rowconfigure(0, weight=1)
         sb = ttk.Scrollbar(lbf, orient="vertical")
-        lb = tk.Listbox(lbf, yscrollcommand=sb.set, width=52, height=22,
-                        selectmode="single")
+        lb = tk.Listbox(lbf, yscrollcommand=sb.set, width=56, height=28,
+                        selectmode="single", activestyle="dotbox")
         sb.config(command=lb.yview)
         sb.pack(side="right", fill="y")
         lb.pack(side="left", fill="both", expand=True)
 
-        for f in files:
-            lb.insert("end", f)
+        visible: list = []
 
-        if current:
-            cur_name = os.path.basename(current)
-            if cur_name in files:
-                idx = files.index(cur_name)
-                lb.selection_set(idx)
-                lb.see(idx)
+        def populate(filter_str: str = ""):
+            nonlocal visible
+            lb.delete(0, "end")
+            fl = filter_str.lower()
+            visible = [(d, p, s) for d, p, s in entries if not fl or fl in d.lower()]
+            for display, _, src in visible:
+                lb.insert("end", f"{display}  [{src}]")
+            if current:
+                cur_name = os.path.splitext(os.path.basename(current))[0]
+                for i, (d, _, _s) in enumerate(visible):
+                    if d == cur_name:
+                        lb.selection_set(i)
+                        lb.see(i)
+                        break
 
-        def confirm():
+        populate()
+
+        def on_search(*_):
+            sel = lb.curselection()
+            sel_display = visible[sel[0]][0] if sel else ""
+            populate(search_var.get())
+            if sel_display:
+                for i, (d, _, _s) in enumerate(visible):
+                    if d == sel_display:
+                        lb.selection_set(i)
+                        lb.see(i)
+                        break
+
+        search_var.trace_add("write", on_search)
+        search_entry.focus_set()
+
+        def confirm(*_):
             sel = lb.curselection()
             if sel:
-                result.append(os.path.join(fonts_dir, lb.get(sel[0])))
+                result.append(visible[sel[0]][1])
             dlg.destroy()
 
-        lb.bind("<Double-1>", lambda _e: confirm())
+        lb.bind("<Double-1>", confirm)
+        lb.bind("<Return>",   confirm)
 
         bf = ttk.Frame(frame)
-        bf.pack(fill="x")
+        bf.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         ttk.Button(bf, text="Cancel", command=dlg.destroy).pack(side="right", padx=(4, 0))
-        ttk.Button(bf, text="OK", command=confirm).pack(side="right")
+        ttk.Button(bf, text="OK",     command=confirm).pack(side="right")
 
         dlg.wait_window()
         return result[0] if result else ""
