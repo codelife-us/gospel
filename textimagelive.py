@@ -403,15 +403,35 @@ class TextImageView:
         self.text_widget.bind("<KeyRelease>", lambda _: self._schedule(400))
         self.text_widget.bind("<<Paste>>",    lambda _: self._schedule(500))
 
-        # ── Row 11: Text 1 font ───────────────────────────────────────────────
+        # ── Row 11: Text 1 font / Text gap ───────────────────────────────────
         tk.Label(f, text="Text 1 font:").grid(row=11, column=0, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.font_var, width=28).grid(row=11, column=1, columnspan=2, sticky="ew", **pad)
+        tk.Entry(f, textvariable=self.font_var, width=20).grid(row=11, column=1, sticky="ew", **pad)
         self.font_var.trace_add("write", lambda *_: self._schedule(400))
         tk.Button(f, text="…", padx=2,
-                  command=self._browse_font).grid(row=11, column=3, sticky="w", padx=(0, 6), pady=round(3 * s))
+                  command=self._browse_font).grid(row=11, column=2, sticky="w", padx=(0, 4), pady=round(3 * s))
+        _gap_f = tk.Frame(f)
+        _gap_f.grid(row=11, column=3, sticky="w", **pad)
+        tk.Label(_gap_f, text="Gap between texts:").pack(side="left", padx=(0, 3))
+        tk.Entry(_gap_f, textvariable=self.text2gap_var, width=4).pack(side="left")
+        self.text2gap_var.trace_add("write", lambda *_: self._schedule(400))
 
         # ── Row 12: Text 1 color ──────────────────────────────────────────────
-        self._make_color_row(f, "Text 1 color:", self.textcolor_var, 12)
+        tk.Label(f, text="Text 1 color:").grid(row=12, column=0, sticky="e", **pad)
+        t1c_frame = tk.Frame(f)
+        t1c_frame.grid(row=12, column=1, sticky="w", **pad)
+        tk.Entry(t1c_frame, textvariable=self.textcolor_var, width=14).pack(side="left")
+        t1c_swatch = tk.Label(t1c_frame, width=2, relief="solid", cursor="hand2")
+        t1c_swatch.pack(side="left", padx=(4, 2))
+        tk.Button(t1c_frame, text="…", padx=2,
+                  command=lambda: self._pick_color(self.textcolor_var, t1c_swatch)).pack(side="left")
+        def _refresh_t1c(*_):
+            color = self.textcolor_var.get().strip() or "gray50"
+            try:    t1c_swatch.config(bg=color)
+            except: t1c_swatch.config(bg="gray50")
+            self._schedule(400)
+        self.textcolor_var.trace_add("write", _refresh_t1c)
+        t1c_swatch.bind("<Button-1>", lambda _: self._pick_color(self.textcolor_var, t1c_swatch))
+        _refresh_t1c()
 
         # ── Row 13: Text 1 outline px / outline color ─────────────────────────
         tk.Label(f, text="Text 1 outline px:").grid(row=13, column=0, sticky="e", **pad)
@@ -477,9 +497,6 @@ class TextImageView:
         self.text2color_var.trace_add("write", _refresh_t2c)
         t2c_swatch.bind("<Button-1>", lambda _: self._pick_color(self.text2color_var, t2c_swatch))
         _refresh_t2c()
-        tk.Label(f, text="Gap px:").grid(row=17, column=2, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.text2gap_var, width=5).grid(row=17, column=3, sticky="w", **pad)
-        self.text2gap_var.trace_add("write", lambda *_: self._schedule(400))
 
         # ── Row 18: Text 2 outline px / outline color ─────────────────────────
         tk.Label(f, text="Text 2 outline px:").grid(row=18, column=0, sticky="e", **pad)
