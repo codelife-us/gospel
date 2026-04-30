@@ -236,13 +236,34 @@ Control the gap between the two blocks with `--text2gap=N` (pixels, default 40):
 | `--text2color=COLOR` | _(same as `--textcolor`)_ | Text color for the second block |
 | `--text2font=FONT` | _(same as `--font`)_ | Font for the second block |
 
-All rendering options — `--textcolor`, `--textshadow`, `--textoutline`, `--textpanel`, `--bgphoto`, etc. — apply to the combined block.
+Options like `--textpanel`, `--bgphoto`, and `--dim` apply to the combined image. Shadow and outline can be set independently for each block (see below).
 
 `\n` works in `--text2` the same as in the primary text:
 
 ```bash
 ./textimage "He is risen." --text2="Hallelujah.\nAmen."
 ```
+
+### Per-block shadow and outline
+
+By default `--text2` inherits `--textshadow`, `--shadowmethod`, `--textoutline`, and `--textoutlinecolor` from the primary text block. Override any of these independently for the second block:
+
+```bash
+./textimage "He is risen." --textshadow=5 --text2="Death has no power." --text2shadow=0
+./textimage "He is risen." --textoutline=2 --text2="Hallelujah." --text2outline=4 --text2outlinecolor=gold
+./textimage "He is risen." --text2="Amen." --text2shadowmethod=2
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--text2outline[=N]` | _(same as `--textoutline`)_ | Outline width in pixels for the second block |
+| `--no-text2outline` | — | Disable outline for the second block |
+| `--text2outlinecolor=C` | _(same as `--textoutlinecolor`)_ | Outline color for the second block |
+| `--text2shadow[=N]` | _(same as `--textshadow`)_ | Shadow intensity 1–10 for the second block |
+| `--no-text2shadow` | — | Disable shadow for the second block |
+| `--text2shadowmethod=N` | _(same as `--shadowmethod`)_ | Shadow style for the second block (`1` = soft, `2` = hard) |
+
+When a text2 override is not specified the option inherits from the corresponding text1 setting, so setting `--textshadow=5` applies to both blocks unless `--text2shadow` overrides it.
 
 ## Text Size
 
@@ -323,9 +344,15 @@ reservetop       = 20
 reserveright     = 0
 reservebottom    = 0
 reserveleft      = 30
+text2outline     =
+text2outlinecolor=
+text2shadow      =
+text2shadowmethod=
 ```
 
-Supported keys: `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `textsize`, `maxtextsize`, `textscale`, `textpanel`, `textpanelcolor`, `textpanelrounded`, `textshadow`, `shadowmethod`, `textoutline`, `textoutlinecolor`, `linespacing`, `textoffy`, `reservetop`, `reserveright`, `reservebottom`, `reserveleft`
+Supported keys: `width`, `height`, `font`, `bg`, `bgphoto`, `dim`, `textcolor`, `textsize`, `maxtextsize`, `textscale`, `textpanel`, `textpanelcolor`, `textpanelrounded`, `textshadow`, `shadowmethod`, `textoutline`, `textoutlinecolor`, `linespacing`, `textoffy`, `reservetop`, `reserveright`, `reservebottom`, `reserveleft`, `text2outline`, `text2outlinecolor`, `text2shadow`, `text2shadowmethod`
+
+The `text2` override keys are blank by default (inherit from the corresponding text1 setting). Set them to a value only when you want to override.
 
 ## Files
 
