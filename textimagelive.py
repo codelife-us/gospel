@@ -2,6 +2,7 @@
 """textimagelive — two-window live preview for textimage"""
 
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, colorchooser, filedialog, simpledialog, messagebox
 import subprocess
 import threading
@@ -79,6 +80,9 @@ THEME_KEYS = [
     ("reserveright",     "reserve_right_var",     "str",  "0"),
     ("reservebottom",    "reserve_bottom_var",    "str",  "0"),
     ("reserveleft",      "reserve_left_var",      "str",  "0"),
+    ("text2color",       "text2color_var",        "str",  ""),
+    ("text2font",        "text2font_var",         "str",  ""),
+    ("text2gap",         "text2gap_var",          "str",  "40"),
 ]
 
 
@@ -94,7 +98,7 @@ def find_live_path() -> str:
 
 def load_live_state(path: str) -> dict:
     """Parse [textimagelive] section of .luminaverse."""
-    state: dict = {"last_text": "", "default_theme": "", "themes": {}}
+    state: dict = {"default_theme": "", "themes": {}}
     try:
         with open(path, encoding="utf-8-sig") as fh:
             in_section = False
@@ -122,7 +126,7 @@ def load_live_state(path: str) -> dict:
                 key = line[:eq].rstrip(" \t")
                 val = line[eq + 1:].lstrip(" \t")
                 if current is None:
-                    if key in ("last_text", "default_theme", "half_size"):
+                    if key in ("default_theme", "half_size", "font_favorites", "ui_scale"):
                         state[key] = val
                 else:
                     state["themes"][current][key] = val
@@ -134,12 +138,14 @@ def load_live_state(path: str) -> dict:
 def save_live_state(path: str, state: dict):
     """Write [textimagelive] section of .luminaverse, preserving all other sections."""
     new_lines: list[str] = []
-    if state.get("last_text"):
-        new_lines.append(f"last_text = {state['last_text']}\n")
     if state.get("default_theme"):
         new_lines.append(f"default_theme = {state['default_theme']}\n")
     if "half_size" in state:
         new_lines.append(f"half_size = {state['half_size']}\n")
+    if state.get("ui_scale") and state["ui_scale"] != "1.0":
+        new_lines.append(f"ui_scale = {state['ui_scale']}\n")
+    if state.get("font_favorites"):
+        new_lines.append(f"font_favorites = {state['font_favorites']}\n")
     for name in sorted(state["themes"]):
         new_lines.append(f"\n[theme:{name}]\n")
         for k, v in state["themes"][name].items():
@@ -223,6 +229,10 @@ class TextImageView:
         else:
             self._live_path = find_live_path()
         self._live_state = load_live_state(self._live_path)
+        self.ui_scale = float(self._live_state.get("ui_scale", "1.0"))
+        self._log_path = os.path.join(
+            os.path.dirname(os.path.abspath(self._live_path)), ".luminaverse.log"
+        )
 
         def _cfg(key, default=""):
             return cfg.get(key, default)
@@ -255,6 +265,9 @@ class TextImageView:
         self.reserve_right_var  = tk.StringVar(value=_cfg("reserveright",  "0"))
         self.reserve_bottom_var = tk.StringVar(value=_cfg("reservebottom", "0"))
         self.reserve_left_var   = tk.StringVar(value=_cfg("reserveleft",   "0"))
+        self.text2color_var     = tk.StringVar(value=_cfg("text2color", ""))
+        self.text2font_var      = tk.StringVar(value=_cfg("text2font",  ""))
+        self.text2gap_var       = tk.StringVar(value=_cfg("text2gap",   "40"))
         half_size_saved         = self._live_state.get("half_size", "yes")
         self.half_size_var      = tk.BooleanVar(value=half_size_saved != "no")
         self.status_var         = tk.StringVar(value="Ready")
@@ -264,10 +277,6 @@ class TextImageView:
         self._position_windows()
 
         # Restore last text then apply default theme (which may re-render)
-        last_text = self._live_state.get("last_text", "")
-        if last_text:
-            self.text_widget.insert("1.0", last_text.replace("\\n", "\n"))
-
         default_name = self._live_state.get("default_theme", "")
         if default_name and default_name in self._live_state["themes"]:
             self._apply_theme(default_name)
@@ -279,16 +288,21 @@ class TextImageView:
 
     def _build_controls(self):
         f = self.root
-        pad = dict(padx=8, pady=3)
-        f.columnconfigure(1, minsize=110)
-        f.columnconfigure(2, minsize=110)
+        s = self.ui_scale
+        for _fn in ("TkDefaultFont", "TkTextFont"):
+            try: tkfont.nametofont(_fn).configure(size=max(9, round(10 * s)))
+            except: pass
+        pad = dict(padx=round(8 * s), pady=round(3 * s))
+        f.columnconfigure(1, minsize=round(110 * s))
+        f.columnconfigure(2, minsize=round(110 * s))
 
-        # Text input
-        tk.Label(f, text="Text:").grid(row=0, column=0, sticky="ne", padx=8, pady=6)
-        self.text_widget = tk.Text(f, height=4, width=36, wrap="word", font=("", 12))
-        self.text_widget.grid(row=0, column=1, columnspan=3, sticky="ew", padx=8, pady=6)
-        self.text_widget.bind("<KeyRelease>", lambda _: self._schedule(400))
-        self.text_widget.bind("<<Paste>>",    lambda _: self._schedule(500))
+        # Width / Height
+        tk.Label(f, text="Width:").grid(row=0, column=0, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.width_var, width=6).grid(row=0, column=1, sticky="w", **pad)
+        self.width_var.trace_add("write", lambda *_: self._schedule(600))
+        tk.Label(f, text="Height:").grid(row=0, column=2, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.height_var, width=6).grid(row=0, column=3, sticky="w", **pad)
+        self.height_var.trace_add("write", lambda *_: self._schedule(600))
 
         # Max text pt / Text scale %
         tk.Label(f, text="Max text pt:").grid(row=1, column=0, sticky="e", **pad)
@@ -306,39 +320,23 @@ class TextImageView:
         tk.Entry(f, textvariable=self.textoffy_var, width=5).grid(row=2, column=3, sticky="w", **pad)
         self.textoffy_var.trace_add("write", lambda *_: self._schedule(400))
 
-        # Font
-        tk.Label(f, text="Font:").grid(row=3, column=0, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.font_var, width=28).grid(row=3, column=1, columnspan=2, sticky="ew", **pad)
-        self.font_var.trace_add("write", lambda *_: self._schedule(400))
-        tk.Button(f, text="…", padx=2,
-                  command=self._browse_font).grid(row=3, column=3, sticky="w", padx=(0, 6), pady=3)
-
-        # Width / Height
-        tk.Label(f, text="Width:").grid(row=4, column=0, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.width_var, width=6).grid(row=4, column=1, sticky="w", **pad)
-        self.width_var.trace_add("write", lambda *_: self._schedule(600))
-        tk.Label(f, text="Height:").grid(row=4, column=2, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.height_var, width=6).grid(row=4, column=3, sticky="w", **pad)
-        self.height_var.trace_add("write", lambda *_: self._schedule(600))
-
         # Colors
-        self._make_color_row(f, "BG:",              self.bg_var,             5)
-        self._make_color_row(f, "Text color:",       self.textcolor_var,      6)
-        self._make_color_row(f, "Text panel color:", self.textpanelcolor_var, 7)
+        self._make_color_row(f, "BG:",              self.bg_var,             4)
+        self._make_color_row(f, "Text panel color:", self.textpanelcolor_var, 5)
 
         # BG Photo
-        tk.Label(f, text="BG photo:").grid(row=8, column=0, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.bgphoto_var, width=28).grid(row=8, column=1, columnspan=2, sticky="ew", **pad)
+        tk.Label(f, text="BG photo:").grid(row=6, column=0, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.bgphoto_var, width=28).grid(row=6, column=1, columnspan=2, sticky="ew", **pad)
         self.bgphoto_var.trace_add("write", lambda *_: self._schedule(400))
         tk.Button(f, text="…", padx=2,
-                  command=self._browse_bgphoto).grid(row=8, column=3, sticky="w", padx=(0, 6), pady=3)
+                  command=self._browse_bgphoto).grid(row=6, column=3, sticky="w", padx=(0, 6), pady=3)
 
         # Dim % / Text shadow / Shadow method
-        tk.Label(f, text="Dim %:").grid(row=9, column=0, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.dim_var, width=5).grid(row=9, column=1, sticky="w", **pad)
+        tk.Label(f, text="Dim %:").grid(row=7, column=0, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.dim_var, width=5).grid(row=7, column=1, sticky="w", **pad)
         self.dim_var.trace_add("write", lambda *_: self._schedule(400))
         _shd_frame = tk.Frame(f)
-        _shd_frame.grid(row=9, column=2, columnspan=2, sticky="w", padx=6, pady=3)
+        _shd_frame.grid(row=7, column=2, columnspan=2, sticky="w", padx=6, pady=3)
         tk.Label(_shd_frame, text="Shadow (0-10):").pack(side="left")
         tk.Entry(_shd_frame, textvariable=self.textshadow_var, width=3).pack(side="left", padx=(2, 6))
         self.textshadow_var.trace_add("write", lambda *_: self._schedule(400))
@@ -362,41 +360,92 @@ class TextImageView:
         self.shadowmethod_var.trace_add("write", _sync_sm_cb)
 
         # Text outline
-        tk.Label(f, text="Text outline px:").grid(row=10, column=0, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.textoutline_var, width=3).grid(row=10, column=1, sticky="w", **pad)
+        tk.Label(f, text="Text outline px:").grid(row=8, column=0, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.textoutline_var, width=3).grid(row=8, column=1, sticky="w", **pad)
         self.textoutline_var.trace_add("write", lambda *_: self._schedule(400))
-        self._make_color_row(f, "Outline color:", self.textoutlinecolor_var, 10, col_start=2)
+        self._make_color_row(f, "Outline color:", self.textoutlinecolor_var, 8, col_start=2)
 
         # Text panel opacity + rounded / Line spacing
-        tk.Label(f, text="Text panel %:").grid(row=11, column=0, sticky="e", **pad)
+        tk.Label(f, text="Text panel %:").grid(row=9, column=0, sticky="e", **pad)
         tp_frame = tk.Frame(f)
-        tp_frame.grid(row=11, column=1, sticky="w", **pad)
+        tp_frame.grid(row=9, column=1, sticky="w", **pad)
         tk.Entry(tp_frame, textvariable=self.textpanel_var, width=5).pack(side="left")
         tk.Checkbutton(tp_frame, text="Rounded", variable=self.panelrounded_var,
                        command=lambda: self._schedule(0)).pack(side="left", padx=(4, 0))
         self.textpanel_var.trace_add("write", lambda *_: self._schedule(400))
-        tk.Label(f, text="Line spacing:").grid(row=11, column=2, sticky="e", **pad)
-        tk.Entry(f, textvariable=self.linespacing_var, width=5).grid(row=11, column=3, sticky="w", **pad)
+        tk.Label(f, text="Line spacing:").grid(row=9, column=2, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.linespacing_var, width=5).grid(row=9, column=3, sticky="w", **pad)
         self.linespacing_var.trace_add("write", lambda *_: self._schedule(400))
 
         # Reserve
-        tk.Label(f, text="Reserve %:").grid(row=12, column=0, sticky="e", **pad)
+        tk.Label(f, text="Reserve %:").grid(row=10, column=0, sticky="e", **pad)
         res_frame = tk.Frame(f)
-        res_frame.grid(row=12, column=1, columnspan=3, sticky="w", **pad)
+        res_frame.grid(row=10, column=1, columnspan=3, sticky="w", **pad)
         for _lbl, _var in (("T", self.reserve_top_var),  ("R", self.reserve_right_var),
                             ("B", self.reserve_bottom_var), ("L", self.reserve_left_var)):
             tk.Label(res_frame, text=f"{_lbl}:").pack(side="left")
             tk.Entry(res_frame, textvariable=_var, width=4).pack(side="left", padx=(0, 8))
             _var.trace_add("write", lambda *_: self._schedule(400))
 
+        # Text 1 input
+        tk.Label(f, text="Text 1:").grid(row=11, column=0, sticky="ne", padx=8, pady=6)
+        self.text_widget = tk.Text(f, height=4, width=36, wrap="word", font=("", round(12 * s)))
+        self.text_widget.grid(row=11, column=1, columnspan=3, sticky="ew", padx=8, pady=6)
+        self.text_widget.bind("<KeyRelease>", lambda _: self._schedule(400))
+        self.text_widget.bind("<<Paste>>",    lambda _: self._schedule(500))
+
+        # Text 1 font
+        tk.Label(f, text="Text 1 font:").grid(row=12, column=0, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.font_var, width=28).grid(row=12, column=1, columnspan=2, sticky="ew", **pad)
+        self.font_var.trace_add("write", lambda *_: self._schedule(400))
+        tk.Button(f, text="…", padx=2,
+                  command=self._browse_font).grid(row=12, column=3, sticky="w", padx=(0, 6), pady=3)
+
+        # Text 1 color
+        self._make_color_row(f, "Text 1 color:", self.textcolor_var, 13)
+
+        # Text 2
+        tk.Label(f, text="Text 2:").grid(row=14, column=0, sticky="ne", padx=8, pady=6)
+        self.text2_widget = tk.Text(f, height=3, width=36, wrap="word", font=("", round(12 * s)))
+        self.text2_widget.grid(row=14, column=1, columnspan=3, sticky="ew", padx=8, pady=6)
+        self.text2_widget.bind("<KeyRelease>", lambda _: self._schedule(400))
+        self.text2_widget.bind("<<Paste>>",    lambda _: self._schedule(500))
+
+        tk.Label(f, text="Text 2 font:").grid(row=15, column=0, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.text2font_var, width=28).grid(row=15, column=1, columnspan=2, sticky="ew", **pad)
+        self.text2font_var.trace_add("write", lambda *_: self._schedule(400))
+        tk.Button(f, text="…", padx=2,
+                  command=self._browse_text2font).grid(row=15, column=3, sticky="w", padx=(0, 6), pady=3)
+
+        tk.Label(f, text="Text 2 color:").grid(row=16, column=0, sticky="e", **pad)
+        t2c_frame = tk.Frame(f)
+        t2c_frame.grid(row=16, column=1, sticky="w", **pad)
+        tk.Entry(t2c_frame, textvariable=self.text2color_var, width=14).pack(side="left")
+        t2c_swatch = tk.Label(t2c_frame, width=2, relief="solid", cursor="hand2")
+        t2c_swatch.pack(side="left", padx=(4, 2))
+        tk.Button(t2c_frame, text="…", padx=2,
+                  command=lambda: self._pick_color(self.text2color_var, t2c_swatch)).pack(side="left")
+        def _refresh_t2c(*_):
+            color = self.text2color_var.get().strip() or "gray50"
+            try:    t2c_swatch.config(bg=color)
+            except: t2c_swatch.config(bg="gray50")
+            self._schedule(400)
+        self.text2color_var.trace_add("write", _refresh_t2c)
+        t2c_swatch.bind("<Button-1>", lambda _: self._pick_color(self.text2color_var, t2c_swatch))
+        _refresh_t2c()
+
+        tk.Label(f, text="Gap px:").grid(row=16, column=2, sticky="e", **pad)
+        tk.Entry(f, textvariable=self.text2gap_var, width=5).grid(row=16, column=3, sticky="w", **pad)
+        self.text2gap_var.trace_add("write", lambda *_: self._schedule(400))
+
         # Themes
         self.theme_var = tk.StringVar()
-        tk.Label(f, text="Theme:").grid(row=13, column=0, sticky="e", **pad)
+        tk.Label(f, text="Theme:").grid(row=17, column=0, sticky="e", **pad)
         self.theme_cb = ttk.Combobox(f, textvariable=self.theme_var, state="readonly", width=18)
-        self.theme_cb.grid(row=13, column=1, sticky="ew", **pad)
+        self.theme_cb.grid(row=17, column=1, sticky="ew", **pad)
         self.theme_cb.bind("<<ComboboxSelected>>", lambda _: self._on_theme_select())
         tbf = tk.Frame(f)
-        tbf.grid(row=13, column=2, columnspan=2, sticky="w", padx=(4, 6), pady=3)
+        tbf.grid(row=17, column=2, columnspan=2, sticky="w", padx=(4, 6), pady=3)
         tk.Button(tbf, text="Save…",   padx=3, command=self._save_theme_dialog).pack(side="left", padx=(0, 3))
         tk.Button(tbf, text="Delete",  padx=3, command=self._delete_theme).pack(side="left", padx=(0, 3))
         tk.Button(tbf, text="Default", padx=3, command=self._make_default_theme).pack(side="left")
@@ -404,20 +453,29 @@ class TextImageView:
 
         # Preview size / Play-Pause / Copy command / Save image
         tk.Checkbutton(f, text="Preview at half size", variable=self.half_size_var,
-                       command=self._on_half_size_toggle).grid(row=14, column=0, columnspan=2, sticky="w", **pad)
+                       command=self._on_half_size_toggle).grid(row=18, column=0, columnspan=2, sticky="w", **pad)
         _act_frame = tk.Frame(f)
-        _act_frame.grid(row=14, column=2, columnspan=2, sticky="e", padx=(0, 8), pady=3)
+        _act_frame.grid(row=18, column=2, columnspan=2, sticky="e", padx=(0, 8), pady=3)
         self.live_btn = tk.Button(_act_frame, text="Pause", width=6, command=self._toggle_live)
         self.live_btn.pack(side="left", padx=(0, 4))
         tk.Button(_act_frame, text="Copy cmd", command=self._copy_cmd).pack(side="left", padx=(0, 4))
         tk.Button(_act_frame, text="Save Image…", command=self._save_image).pack(side="left")
 
-        # Status
+        # Status + zoom controls
         tk.Label(f, textvariable=self.status_var, fg="gray45",
-                 anchor="w", width=46).grid(row=15, column=0, columnspan=4, **pad)
+                 anchor="w", width=46).grid(row=19, column=0, columnspan=3, **pad)
+        _zoom_f = tk.Frame(f)
+        _zoom_f.grid(row=19, column=3, sticky="e", padx=(0, round(6 * s)), pady=round(3 * s))
+        tk.Button(_zoom_f, text="−", width=2, command=lambda: self._zoom(-0.1)).pack(side="left")
+        tk.Label(_zoom_f, text=f"{round(s * 100)}%", width=4).pack(side="left", padx=2)
+        tk.Button(_zoom_f, text="+", width=2, command=lambda: self._zoom(0.1)).pack(side="left")
+        self.root.bind("<Control-equal>", lambda _e: self._zoom(0.1))
+        self.root.bind("<Control-minus>",  lambda _e: self._zoom(-0.1))
+        self.root.bind("<Control-0>",      lambda _e: self._zoom(0))
 
     def _make_color_row(self, parent, label: str, var: tk.StringVar, row: int, col_start: int = 0):
-        pad = dict(padx=6, pady=3)
+        s = getattr(self, 'ui_scale', 1.0)
+        pad = dict(padx=round(6 * s), pady=round(3 * s))
         tk.Label(parent, text=label).grid(row=row, column=col_start, sticky="e", **pad)
 
         entry = tk.Entry(parent, textvariable=var, width=22 if col_start == 0 else 10)
@@ -474,12 +532,20 @@ class TextImageView:
                 var.set("5" if val == "yes" else "0" if val in ("no", "") else val)
             else:
                 var.set(val)
+        if "text" in theme:
+            self.text_widget.delete("1.0", "end")
+            self.text_widget.insert("1.0", theme["text"].replace("\\n", "\n"))
+        if "text2" in theme:
+            self.text2_widget.delete("1.0", "end")
+            self.text2_widget.insert("1.0", theme["text2"].replace("\\n", "\n"))
 
     def _collect_theme(self) -> dict:
         theme = {}
         for key, attr, typ, _ in THEME_KEYS:
             var = getattr(self, attr)
             theme[key] = ("yes" if var.get() else "no") if typ == "bool" else var.get()
+        theme["text"]  = self.text_widget.get("1.0", "end-1c").replace("\n", "\\n")
+        theme["text2"] = self.text2_widget.get("1.0", "end-1c").replace("\n", "\\n")
         return theme
 
     def _on_theme_select(self):
@@ -536,10 +602,25 @@ class TextImageView:
         if path:
             self.font_var.set(path)
 
-    def _font_list_picker(self, dirs: list) -> str:
-        """Searchable font picker that lists all fonts from the given directories."""
+    def _browse_text2font(self):
+        if sys.platform == "win32":
+            win_fonts = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
+            path = self._font_list_picker([win_fonts], self.text2font_var) or self._pick_font_file(win_fonts)
+        else:
+            dirs = [
+                Path.home() / "Library" / "Fonts",
+                Path("/Library/Fonts"),
+                Path("/System/Library/Fonts"),
+            ]
+            path = self._font_list_picker([str(d) for d in dirs if d.exists()], self.text2font_var)
+        if path:
+            self.text2font_var.set(path)
+
+    def _font_list_picker(self, dirs: list, target_var: tk.StringVar = None) -> str:
+        """Searchable font picker with All / Favorites views and live preview."""
+        if target_var is None:
+            target_var = self.font_var
         exts = {".ttf", ".otf", ".ttc"}
-        # Build sorted list of (display_name, full_path, source_label)
         entries: list = []
         labels = {
             str(Path.home() / "Library" / "Fonts"): "Personal",
@@ -559,7 +640,10 @@ class TextImageView:
         if not entries:
             return ""
 
-        current_path = self.font_var.get().strip()
+        current_path = target_var.get().strip()
+        original_font = current_path
+        favs: set = set(filter(None, self._live_state.get("font_favorites", "").split("|")))
+        _preview_id = [None]
 
         dlg = tk.Toplevel(self.root)
         dlg.title("Select Font")
@@ -570,40 +654,72 @@ class TextImageView:
         frame = ttk.Frame(dlg, padding=8)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(0, weight=1)
-        frame.rowconfigure(1, weight=1)
+        frame.rowconfigure(2, weight=1)
 
-        # Search bar
+        # Search bar + Preview toggle (row 0)
         sf = ttk.Frame(frame)
-        sf.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        sf.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         sf.columnconfigure(1, weight=1)
         ttk.Label(sf, text="Search:").grid(row=0, column=0, padx=(0, 6))
         search_var = tk.StringVar()
         search_entry = ttk.Entry(sf, textvariable=search_var)
         search_entry.grid(row=0, column=1, sticky="ew")
+        preview_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(sf, text="Preview", variable=preview_var).grid(row=0, column=2, padx=(10, 0))
 
-        # Listbox
+        # View toggle (row 1)
+        view_var = tk.StringVar(value="favorites" if favs else "all")
+        vf = ttk.Frame(frame)
+        vf.grid(row=1, column=0, sticky="w", pady=(0, 4))
+        ttk.Label(vf, text="View:").pack(side="left", padx=(0, 6))
+        ttk.Radiobutton(vf, text="All Fonts", variable=view_var, value="all",
+                        command=lambda: populate(search_var.get())).pack(side="left")
+        ttk.Radiobutton(vf, text="Favorites", variable=view_var, value="favorites",
+                        command=lambda: populate(search_var.get())).pack(side="left", padx=(6, 0))
+
+        # Listbox (row 2)
         lbf = ttk.Frame(frame)
-        lbf.grid(row=1, column=0, sticky="nsew")
+        lbf.grid(row=2, column=0, sticky="nsew")
         lbf.columnconfigure(0, weight=1)
         lbf.rowconfigure(0, weight=1)
         sb = ttk.Scrollbar(lbf, orient="vertical")
-        lb = tk.Listbox(lbf, yscrollcommand=sb.set, width=56, height=28,
+        lb = tk.Listbox(lbf, yscrollcommand=sb.set, width=56, height=26,
                         selectmode="single", activestyle="dotbox")
         sb.config(command=lb.yview)
         sb.pack(side="right", fill="y")
         lb.pack(side="left", fill="both", expand=True)
 
-        # visible_entries mirrors what's currently shown in the listbox
         visible: list = []
+
+        def _selected_path() -> str:
+            sel = lb.curselection()
+            return visible[sel[0]][1] if sel else ""
+
+        def _refresh_fav_btn():
+            p = _selected_path()
+            fav_btn.config(text="★ Remove Favorite" if p in favs else "☆ Add to Favorites")
+
+        def _on_select(_=None):
+            _refresh_fav_btn()
+            if not preview_var.get():
+                return
+            p = _selected_path()
+            if p and p != target_var.get():
+                target_var.set(p)
+                if _preview_id[0]:
+                    self.root.after_cancel(_preview_id[0])
+                _preview_id[0] = self.root.after(150, self._render)
 
         def populate(filter_str: str = ""):
             nonlocal visible
             lb.delete(0, "end")
             fl = filter_str.lower()
-            visible = [(d, p, s) for d, p, s in entries if not fl or fl in d.lower()]
-            for display, _, src in visible:
-                lb.insert("end", f"{display}  [{src}]")
-            # Pre-select current font if present
+            pool = [(d, p, s) for d, p, s in entries if p in favs] \
+                   if view_var.get() == "favorites" else entries
+            visible = [(d, p, s) for d, p, s in pool if not fl or fl in d.lower()]
+            for display, path, src in visible:
+                prefix = "★ " if path in favs else "   "
+                lb.insert("end", f"{prefix}{display}  [{src}]")
             if current_path:
                 cur_name = os.path.splitext(os.path.basename(current_path))[0]
                 for i, (d, _, _s) in enumerate(visible):
@@ -611,22 +727,49 @@ class TextImageView:
                         lb.selection_set(i)
                         lb.see(i)
                         break
+            _refresh_fav_btn()
 
-        populate()
+        def _toggle_fav():
+            p = _selected_path()
+            if not p:
+                return
+            if p in favs:
+                favs.discard(p)
+            else:
+                favs.add(p)
+            self._live_state["font_favorites"] = "|".join(sorted(favs))
+            save_live_state(self._live_path, self._live_state)
+            populate(search_var.get())
+            for i, (_, fp, _) in enumerate(visible):
+                if fp == p:
+                    lb.selection_set(i)
+                    lb.see(i)
+                    break
+            _refresh_fav_btn()
+
+        lb.bind("<<ListboxSelect>>", _on_select)
 
         def on_search(*_):
             sel = lb.curselection()
-            sel_display = visible[sel[0]][0] if sel else ""
+            sel_path = visible[sel[0]][1] if sel else ""
             populate(search_var.get())
-            if sel_display:
-                for i, (d, _, _s) in enumerate(visible):
-                    if d == sel_display:
+            if sel_path:
+                for i, (_, p, _) in enumerate(visible):
+                    if p == sel_path:
                         lb.selection_set(i)
                         lb.see(i)
                         break
 
         search_var.trace_add("write", on_search)
         search_entry.focus_set()
+
+        def cancel():
+            if _preview_id[0]:
+                self.root.after_cancel(_preview_id[0])
+            if preview_var.get() and target_var.get() != original_font:
+                target_var.set(original_font)
+                self.root.after(0, self._render)
+            dlg.destroy()
 
         def confirm(*_):
             sel = lb.curselection()
@@ -636,11 +779,17 @@ class TextImageView:
 
         lb.bind("<Double-1>", confirm)
         lb.bind("<Return>",   confirm)
+        dlg.protocol("WM_DELETE_WINDOW", cancel)
 
+        # Bottom bar (row 3)
         bf = ttk.Frame(frame)
-        bf.grid(row=2, column=0, sticky="ew", pady=(6, 0))
-        ttk.Button(bf, text="Cancel", command=dlg.destroy).pack(side="right", padx=(4, 0))
+        bf.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        fav_btn = ttk.Button(bf, text="☆ Add to Favorites", width=20, command=_toggle_fav)
+        fav_btn.pack(side="left")
+        ttk.Button(bf, text="Cancel", command=cancel).pack(side="right", padx=(4, 0))
         ttk.Button(bf, text="OK",     command=confirm).pack(side="right")
+
+        populate()
 
         dlg.wait_window()
         return result[0] if result else ""
@@ -743,6 +892,29 @@ class TextImageView:
         self.win.geometry(f"{PREVIEW_W}x{PREVIEW_H}+{80 + cw + 16}+200")
         self.root.lift()
         self.root.focus_force()
+
+    # ── Zoom ──────────────────────────────────────────────────────────────────
+
+    def _zoom(self, delta):
+        new_scale = 1.0 if delta == 0 else round(max(0.7, min(2.0, self.ui_scale + delta)), 1)
+        if new_scale == self.ui_scale:
+            return
+        t1 = self.text_widget.get("1.0", "end-1c")
+        t2 = self.text2_widget.get("1.0", "end-1c")
+        for w in self.root.winfo_children():
+            if w is not self.win:
+                w.destroy()
+        self.ui_scale = new_scale
+        self._build_controls()
+        if t1:
+            self.text_widget.insert("1.0", t1)
+        if t2:
+            self.text2_widget.insert("1.0", t2)
+        self._update_theme_dropdown()
+        self._live_state["ui_scale"] = str(new_scale)
+        save_live_state(self._live_path, self._live_state)
+        self._position_windows()
+        self._schedule(0)
 
     # ── Pillow font-size fitting ───────────────────────────────────────────────
     # When a font file path is given, fit the text in Python (fast) and pass
@@ -911,6 +1083,19 @@ class TextImageView:
             if re.fullmatch(r'\d+', _pct) and int(_pct) > 0:
                 cmd.append(f"--reserve={_side},{_pct}")
 
+        text2 = self.text2_widget.get("1.0", "end-1c").strip()
+        if text2:
+            cmd.append(f"--text2={text2.replace(chr(10), chr(92) + 'n')}")
+            t2gap = self.text2gap_var.get().strip()
+            if re.fullmatch(r'\d+', t2gap) and t2gap != "40":
+                cmd.append(f"--text2gap={t2gap}")
+            t2color = self.text2color_var.get().strip()
+            if t2color:
+                cmd.append(f"--text2color={t2color}")
+            t2font = self.text2font_var.get().strip()
+            if t2font:
+                cmd.append(f"--text2font={t2font}")
+
         return cmd
 
     def _copy_cmd(self):
@@ -944,11 +1129,6 @@ class TextImageView:
         save_live_state(self._live_path, self._live_state)
         self._redisplay()
 
-    def _save_last_text(self, text: str):
-        escaped = text.replace("\n", "\\n")
-        self._live_state["last_text"] = escaped
-        save_live_state(self._live_path, self._live_state)
-
     # ── Rendering ─────────────────────────────────────────────────────────────
 
     def _schedule(self, delay_ms: int = 400):
@@ -960,7 +1140,7 @@ class TextImageView:
 
     def _toggle_live(self):
         self._live_active = not self._live_active
-        self.live_btn.config(text="Pause" if self._live_active else "Play")
+        self.live_btn.config(text="Pause" if self._live_active else "Go Live")
         if self._live_active:
             self._schedule(0)
 
@@ -993,9 +1173,25 @@ class TextImageView:
                                              stderr.decode(errors="replace"))
         self.root.after(0, self._render_done, result, gen)
 
+    def _append_log(self, stderr: str):
+        import datetime
+        try:
+            with open(self._log_path, "a", encoding="utf-8") as fh:
+                fh.write(f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}]\n")
+                fh.write(stderr.rstrip())
+                fh.write("\n\n")
+        except OSError:
+            pass
+
     def _render_done(self, result, gen: int):
         if gen != self._render_gen:
             return
+        filtered = "\n".join(
+            l for l in result.stderr.splitlines()
+            if not l.startswith("Saved to /var/")
+        )
+        if filtered.strip():
+            self._append_log(filtered)
         if result.returncode != 0:
             lines = (result.stderr or result.stdout).strip().splitlines()
             msg = lines[0] if lines else "textimage error"
@@ -1007,7 +1203,6 @@ class TextImageView:
             text = self._get_text()
             preview = text.replace("\n", " ↵ ")[:60]
             self.status_var.set(preview)
-            self._save_last_text(text)
         except Exception as exc:
             self.status_var.set(str(exc))
 
