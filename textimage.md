@@ -1,6 +1,6 @@
 # textimage
 
-A C++ program that renders plain text to a JPEG image with auto-fitted text. The text is centered on the canvas with no citation line.
+A C++ program that renders plain text to a JPEG image with auto-fitted text. The text is centered on the canvas. An optional second text can be provided. There are many features to use on the text for sizing and how it presents. 
 
 ## Features
 
