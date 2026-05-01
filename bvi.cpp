@@ -709,13 +709,13 @@ int main(int argc, char* argv[]) {
         string bibleFile, bibleUrl;
         if (version == "KJV") {
             bibleFile = "BibleKJV.txt";
-            bibleUrl  = "https://openbible.com/textfiles/kjv.txt";
+            bibleUrl  = "https://raw.githubusercontent.com/codelife-us/LuminaVerse/main/BibleKJV.txt";
         } else if (version == "BSB") {
             bibleFile = "BibleBSB.txt";
             bibleUrl  = "https://bereanbible.com/bsb.txt";
         } else if (version == "WEB") {
             bibleFile = "BibleWEB.txt";
-            bibleUrl  = "https://openbible.com/textfiles/web.txt";
+            bibleUrl  = "https://raw.githubusercontent.com/codelife-us/LuminaVerse/main/BibleWEB.txt";
         } else {
             cerr << "Error: unsupported Bible version '" << version << "'.\n";
             cerr << "Supported versions: KJV, BSB, WEB\n";
@@ -740,9 +740,26 @@ int main(int argc, char* argv[]) {
                 char answer;
                 cin >> answer;
                 if (answer == 'y' || answer == 'Y') {
-                    string cmd = "curl -L \"" + bibleUrl + "\" -o \"" + bibleFile + "\"";
+                    string tmpFile = bibleFile + ".tmp";
+                    string cmd = "curl -L --fail \"" + bibleUrl + "\" -o \"" + tmpFile + "\"";
                     if (runSystem(cmd) != 0) {
+                        remove(tmpFile.c_str());
                         cerr << "Download failed. Please download manually:\n  " << bibleUrl << "\n";
+                        return 1;
+                    }
+                    {
+                        ifstream chk(tmpFile);
+                        string first;
+                        getline(chk, first);
+                        if (first.find('<') != string::npos) {
+                            remove(tmpFile.c_str());
+                            cerr << "Download returned HTML instead of Bible text.\nPlease download manually:\n  " << bibleUrl << "\n";
+                            return 1;
+                        }
+                    }
+                    if (rename(tmpFile.c_str(), bibleFile.c_str()) != 0) {
+                        remove(tmpFile.c_str());
+                        cerr << "Failed to save " << bibleFile << "\n";
                         return 1;
                     }
                     cout << "Downloaded " << bibleFile << " successfully.\n";

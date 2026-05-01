@@ -1529,14 +1529,16 @@ void openEsvInBrowser(const string& url) {
 
 void printHelp() {
     cout << "bv v" << VERSION << endl;
-    cout << "\nUsage: bv --ref=REF [OPTIONS]" << endl;
+    cout << "\nUsage: bv REF [OPTIONS]" << endl;
+    cout << "       bv --ref=REF [OPTIONS]" << endl;
     cout << "       bv --day[=N]  [OPTIONS]" << endl;
     cout << "\nOptions:" << endl;
     cout << "  -h, --help              Show this help message and exit" << endl;
     cout << "  -v, --version           Show version information and exit" << endl;
     cout << "  -bv=VERSION             Set Bible version (default: KJV)" << endl;
     cout << "  --bibleversion=VERSION  Specify Bible version (KJV, BSB, WEB)" << endl;
-    cout << "  --ref=REF               Bible reference (use comma to separate multiple)" << endl;
+    cout << "  REF, --ref=REF          Bible reference (positional or named)" << endl;
+    cout << "                          Use comma to separate multiple references" << endl;
     cout << "                          Formats: Book Ch:V  Book Ch:V-V  Book Ch:V-  Book Ch" << endl;
     cout << "  --refstyle=STYLE        Citation style: 1=new line (default), 2=inline, 3=parens, 4=parens+version" << endl;
     cout << "  --versenumbers, -vn     Prefix each verse with its verse number, e.g. [1]" << endl;
@@ -1667,6 +1669,8 @@ int main(int argc, char* argv[]) {
             dayArg = lt->tm_yday + 1;
         } else if (arg.find("--day=") == 0 || arg.find("-d=") == 0) {
             dayArg = stoi(arg.substr(arg.find('=') + 1));
+        } else if (refArg.empty() && arg[0] != '-') {
+            refArg = arg;
         } else if (arg.find("-") == 0) {
             cerr << "Error: unknown option '" << arg << "'" << endl;
             cerr << "Run 'bv --help' for usage." << endl;
@@ -1699,7 +1703,8 @@ int main(int argc, char* argv[]) {
     }
 
     if (refArg.empty() && dayArg == 0) {
-        cerr << "Usage: bv --ref=REF [OPTIONS]" << endl;
+        cerr << "Usage: bv REF [OPTIONS]" << endl;
+        cerr << "       bv --ref=REF [OPTIONS]" << endl;
         cerr << "       bv --day[=N]  [OPTIONS]" << endl;
         cerr << "Run 'bv --help' for usage." << endl;
         return 1;
@@ -1715,11 +1720,13 @@ int main(int argc, char* argv[]) {
 
     string bibleFile, bibleUrl;
     if (version == "KJV") {
-        bibleFile = "BibleKJV.txt"; bibleUrl = "https://openbible.com/textfiles/kjv.txt";
+        bibleFile = "BibleKJV.txt"; bibleUrl = "https://raw.githubusercontent.com/codelife-us/LuminaVerse/main/BibleKJV.txt";
     } else if (version == "BSB") {
         bibleFile = "BibleBSB.txt"; bibleUrl = "https://bereanbible.com/bsb.txt";
     } else if (version == "WEB") {
-        bibleFile = "BibleWEB.txt"; bibleUrl = "https://openbible.com/textfiles/web.txt";
+        bibleFile = "BibleWEB.txt"; bibleUrl = "https://raw.githubusercontent.com/codelife-us/LuminaVerse/main/BibleWEB.txt";
+    } else if (openGw) {
+        goto bible_ready;  // unknown version passed through to Bible Gateway as-is
     } else {
         cerr << "Error: unsupported Bible version '" << version << "'." << endl;
         cerr << "Supported versions: KJV, BSB, WEB" << endl;
@@ -1743,9 +1750,27 @@ int main(int argc, char* argv[]) {
             cerr << "Download it now? (y/n): ";
             char answer; cin >> answer;
             if (answer == 'y' || answer == 'Y') {
-                string cmd = "curl -L \"" + bibleUrl + "\" -o \"" + bibleFile + "\"";
+                string tmpFile = bibleFile + ".tmp";
+                string cmd = "curl -L --fail \"" + bibleUrl + "\" -o \"" + tmpFile + "\"";
                 if (system(cmd.c_str()) != 0) {
+                    remove(tmpFile.c_str());
                     cerr << "Download failed. Please download manually:\n  " << bibleUrl << endl;
+                    return 1;
+                }
+                // Verify the downloaded file looks like Bible text, not HTML
+                {
+                    ifstream chk(tmpFile);
+                    string first;
+                    getline(chk, first);
+                    if (first.find('<') != string::npos) {
+                        remove(tmpFile.c_str());
+                        cerr << "Download returned HTML instead of Bible text.\nPlease download manually:\n  " << bibleUrl << endl;
+                        return 1;
+                    }
+                }
+                if (rename(tmpFile.c_str(), bibleFile.c_str()) != 0) {
+                    remove(tmpFile.c_str());
+                    cerr << "Failed to save " << bibleFile << endl;
                     return 1;
                 }
                 cout << "Downloaded " << bibleFile << " successfully." << endl;

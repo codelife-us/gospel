@@ -656,9 +656,9 @@ int main(int argc, char* argv[]) {
     transform(version.begin(), version.end(), version.begin(), ::toupper);
 
     string bibleFile, bibleUrl;
-    if      (version == "KJV") { bibleFile = "BibleKJV.txt"; bibleUrl = "https://openbible.com/textfiles/kjv.txt"; }
+    if      (version == "KJV") { bibleFile = "BibleKJV.txt"; bibleUrl = "https://raw.githubusercontent.com/codelife-us/LuminaVerse/main/BibleKJV.txt"; }
     else if (version == "BSB") { bibleFile = "BibleBSB.txt"; bibleUrl = "https://bereanbible.com/bsb.txt"; }
-    else if (version == "WEB") { bibleFile = "BibleWEB.txt"; bibleUrl = "https://openbible.com/textfiles/web.txt"; }
+    else if (version == "WEB") { bibleFile = "BibleWEB.txt"; bibleUrl = "https://raw.githubusercontent.com/codelife-us/LuminaVerse/main/BibleWEB.txt"; }
     else { cerr << "Unknown version '" << version << "'. Use KJV, BSB, or WEB.\n"; return 1; }
 
     // Resolve file path
@@ -679,8 +679,26 @@ int main(int argc, char* argv[]) {
             cerr << "Bible file '" << bibleFile << "' not found.\nDownload it now? (y/n): ";
             char ans; cin >> ans;
             if (ans == 'y' || ans == 'Y') {
-                string cmd = "curl -L \"" + bibleUrl + "\" -o \"" + bibleFile + "\"";
-                if (system(cmd.c_str()) != 0) { cerr << "Download failed.\n"; return 1; }
+                string tmpFile = bibleFile + ".tmp";
+                string cmd = "curl -L --fail \"" + bibleUrl + "\" -o \"" + tmpFile + "\"";
+                if (system(cmd.c_str()) != 0) {
+                    remove(tmpFile.c_str());
+                    cerr << "Download failed.\n"; return 1;
+                }
+                {
+                    ifstream chk(tmpFile);
+                    string first;
+                    getline(chk, first);
+                    if (first.find('<') != string::npos) {
+                        remove(tmpFile.c_str());
+                        cerr << "Download returned HTML instead of Bible text.\nPlease download manually:\n  " << bibleUrl << "\n";
+                        return 1;
+                    }
+                }
+                if (rename(tmpFile.c_str(), bibleFile.c_str()) != 0) {
+                    remove(tmpFile.c_str());
+                    cerr << "Failed to save " << bibleFile << "\n"; return 1;
+                }
             } else { return 1; }
         }
     }
