@@ -52,7 +52,7 @@ using namespace std;
 #define HOME_ENV "HOME"
 #endif
 
-const string VERSION = "1.2";
+const string VERSION = "1.21";
 const string CONFIG_FILE = ".luminaverse";
 const string SECTION     = "bv";
 // Reading plans
@@ -1503,6 +1503,19 @@ string toEsvUrl(const string& ref) {
     return toEsvUrl(vector<string>{ref});
 }
 
+string toGwUrl(const vector<string>& refs, const string& gwVersion) {
+    string combined;
+    for (size_t i = 0; i < refs.size(); ++i) {
+        if (i > 0) combined += ";";
+        combined += encodeEsvRef(refs[i]);
+    }
+    return "https://www.biblegateway.com/passage/?search=" + combined + "&version=" + gwVersion;
+}
+
+string toGwUrl(const string& ref, const string& gwVersion) {
+    return toGwUrl(vector<string>{ref}, gwVersion);
+}
+
 void openEsvInBrowser(const string& url) {
 #ifdef _WIN32
     string cmd = "start \"\" \"" + url + "\"";
@@ -1532,6 +1545,7 @@ void printHelp() {
     cout << "  --versequotes           Wrap each verse in curly quotes" << endl;
     cout << "  --chapterheader, -ch    Print book and chapter as a header for full chapters" << endl;
     cout << "  -e, -esv, --openesv     Open reference on esv.org in the browser" << endl;
+    cout << "  -g, --opengw            Open reference on biblegateway.com in the browser" << endl;
     cout << "  -d, --day               Show today's reading from the reading plan" << endl;
     cout << "  -d=N, --day=N           Show day N (1-365) from the reading plan" << endl;
     cout << "  --plan=NAME             Select reading plan (default: Chronological)" << endl;
@@ -1608,6 +1622,7 @@ int main(int argc, char* argv[]) {
     bool showConfig    = false;
     bool refOnly       = false;
     bool openEsv       = false;
+    bool openGw        = false;
 
     for (int i = 1; i < argc; ++i) {
         string arg = argv[i];
@@ -1639,6 +1654,8 @@ int main(int argc, char* argv[]) {
             showConfig = true;
         } else if (arg == "--openesv" || arg == "-esv" || arg == "-e") {
             openEsv = true;
+        } else if (arg == "--opengw" || arg == "-g") {
+            openGw = true;
         } else if (arg.find("--plan=") == 0) {
             planArg = arg.substr(7);
             transform(planArg.begin(), planArg.end(), planArg.begin(), ::tolower);
@@ -1694,6 +1711,7 @@ int main(int argc, char* argv[]) {
     }
 
     transform(version.begin(), version.end(), version.begin(), ::toupper);
+    string gwVersion = (version == "BSB") ? "WEB" : version;
 
     string bibleFile, bibleUrl;
     if (version == "KJV") {
@@ -1769,17 +1787,18 @@ int main(int argc, char* argv[]) {
         }
         cout << "Day " << dayArg << " (" << planName << "): " << entry << "\n";
         vector<string> dayRefs = expandPlanEntry(entry);
-        if (openEsv) {
+        if (openEsv || openGw) {
             // Split raw entry on ';' — works for both chapter and verse-level plans
-            vector<string> esvParts;
+            vector<string> parts;
             stringstream es(entry);
             string ep;
             while (getline(es, ep, ';')) {
                 size_t s = ep.find_first_not_of(" \t");
                 size_t e2 = ep.find_last_not_of(" \t");
-                if (s != string::npos) esvParts.push_back(ep.substr(s, e2 - s + 1));
+                if (s != string::npos) parts.push_back(ep.substr(s, e2 - s + 1));
             }
-            if (!esvParts.empty()) openEsvInBrowser(toEsvUrl(esvParts));
+            if (openEsv && !parts.empty()) openEsvInBrowser(toEsvUrl(parts));
+            if (openGw  && !parts.empty()) openEsvInBrowser(toGwUrl(parts, gwVersion));
         } else {
             cout << "\n";
             for (const string& ref : dayRefs) {
@@ -1796,7 +1815,7 @@ int main(int argc, char* argv[]) {
 
     stringstream ss(refArg);
     string token, lastBook;
-    vector<string> esvRefs;
+    vector<string> esvRefs, gwRefs;
     while (getline(ss, token, ',')) {
         if (!token.empty() && token.front() == '[') token.erase(0, 1);
         if (!token.empty() && token.back()  == ']') token.pop_back();
@@ -1830,9 +1849,9 @@ int main(int argc, char* argv[]) {
         if (expanded.empty()) expanded.push_back(token);
 
         for (const string& t : expanded) {
-            if (openEsv) {
-                esvRefs.push_back(t);
-            } else {
+            if (openEsv) esvRefs.push_back(t);
+            if (openGw)  gwRefs.push_back(t);
+            if (!openEsv && !openGw) {
                 string verseText = lookupVerses(t, verseNumbers, verseNewline, false);
                 if (!verseText.empty()) {
                     if (chapterHeader && t.find(':') == string::npos)
@@ -1847,6 +1866,8 @@ int main(int argc, char* argv[]) {
 
     if (openEsv && !esvRefs.empty())
         openEsvInBrowser(toEsvUrl(esvRefs));
+    if (openGw && !gwRefs.empty())
+        openEsvInBrowser(toGwUrl(gwRefs, gwVersion));
 
     return 0;
 }
