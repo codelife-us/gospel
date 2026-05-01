@@ -112,6 +112,14 @@ Open the reference on esv.org in the browser (no prompt, verse output suppressed
 ./bv --ref="John 3:16" --openesv
 ```
 
+Open the reference on biblegateway.com in the browser (no prompt, verse output suppressed):
+```bash
+./bv --ref="John 3:16" -g
+./bv --ref="John 3:16" --opengw
+```
+
+> Note: Bible Gateway does not carry BSB, so `-bv=BSB` is treated as WEB when using `--opengw`.
+
 ## Daily Reading Plans
 
 Look up today's reading from the default (Chronological) plan:
@@ -144,6 +152,13 @@ Open today's reading on esv.org:
 ./bv -d -e
 ./bv --day -esv
 ./bv --day=42 --plan=Sequential -esv
+```
+
+Open today's reading on biblegateway.com:
+```bash
+./bv -d -g
+./bv --day --opengw
+./bv --day=42 --plan=Sequential -g
 ```
 
 ## Citation Styles
